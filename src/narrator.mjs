@@ -209,6 +209,7 @@ export async function* narrateIntervention(world, type, entity) {
     feed:  `In ${world.name}, the watcher reaches down and delivers sustenance to ${entity.name} (${entity.personalityLabel}), who was starving. Write 1 sentence narrating this divine act. Poetic. No dialogue. Max 20 words.`,
     calm:  `In ${world.name}, the watcher breathes peace into ${entity.name} (${entity.personalityLabel}), who was troubled. Write 1 sentence. Gentle, quiet. Max 20 words.`,
     smite: `In ${world.name}, the watcher's judgment falls upon ${entity.name} (${entity.personalityLabel}). Write 1 dramatic sentence of divine destruction. No dialogue. Max 20 words.`,
+    revive: `In ${world.name}, the watcher pulls ${entity.name} (${entity.personalityLabel}) back from death. Write 1 sentence — the moment of return to life. Miraculous, intimate. No dialogue. Max 20 words.`,
   };
   yield* ollamaStream(prompts[type] ?? prompts.calm, 45);
 }

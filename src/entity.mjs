@@ -118,9 +118,10 @@ export class Entity {
     if (this.hunger >= 100) this.starvingTicks++;
     else this.starvingTicks = 0;
 
-    if (this.starvingTicks >= 5 || this.energy <= 0 || this.age >= 160) {
-      this.alive = false;
-      const reason = this.starvingTicks >= 5 ? 'starvation'
+    if (this.starvingTicks >= 8 || this.energy <= 0 || this.age >= 160) {
+      this.alive   = false;
+      this.diedAt  = Date.now();
+      const reason = this.starvingTicks >= 8 ? 'starvation'
                    : this.energy <= 0        ? 'exhaustion'
                    :                           'old age';
       this.remember(`died of ${reason}`);

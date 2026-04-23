@@ -293,7 +293,8 @@ ui.onCommand(async cmd => {
 
     switch (verb.toLowerCase()) {
       case 'feed':
-        e.hunger = 5;
+        e.hunger       = 5;
+        e.starvingTicks = 0; // reset starvation counter so feed actually saves them
         ui.addLog(`You reach down and feed ${e.name}.`, 'yellow');
         break;
       case 'calm':
@@ -314,6 +315,38 @@ ui.onCommand(async cmd => {
     return;
   }
 
+  // ── Revive ───────────────────────────────────────────────────
+  if (lower.startsWith('revive ')) {
+    const q    = norm.slice(7).trim().toLowerCase();
+    const GRACE = 300000; // 5 minutes after death
+    const e    = world.entities.find(en =>
+      en.name.toLowerCase().startsWith(q) &&
+      !en.alive &&
+      en.diedAt &&
+      Date.now() - en.diedAt < GRACE
+    );
+
+    if (!e) {
+      // Check if they're alive (player misspelled or soul is fine)
+      const alive = world.aliveEntities().find(en => en.name.toLowerCase().startsWith(q));
+      if (alive) { ui.addLog(`${alive.name} still walks — no need.`, 'white'); }
+      else        { ui.addLog(`No recently departed soul named "${q}". Act within 5 minutes of death.`, 'red'); }
+      return;
+    }
+
+    e.alive        = true;
+    e.hunger       = 25;
+    e.energy       = 60;
+    e.mood         = 50;
+    e.starvingTicks = 0;
+    e.diedAt       = null;
+    e.remember('returned from death by the watcher');
+
+    ui.addLog(`${e.name} draws breath again.`, 'yellow');
+    enqueue(narrateIntervention(world, 'revive', e), '');
+    return;
+  }
+
   // ── Help ─────────────────────────────────────────────────────
   if (lower === 'help') {
     ui.addLog('── observation ─────────────────', 'white');
@@ -325,9 +358,10 @@ ui.onCommand(async cmd => {
     ui.addLog('talk <name>       — speak directly with a soul', 'white');
     ui.addLog('bye               — leave a conversation', 'white');
     ui.addLog('── divine acts ─────────────────', 'white');
-    ui.addLog('feed <name>       — give sustenance', 'white');
+    ui.addLog('feed <name>       — give sustenance (resets starvation counter)', 'white');
     ui.addLog('calm <name>       — bring peace, clear rivalries', 'white');
     ui.addLog('smite <name>      — divine judgment', 'white');
+    ui.addLog('revive <name>     — pull a soul back from death (within 5 min)', 'white');
     ui.addLog('── world ───────────────────────', 'white');
     ui.addLog('pause / resume    — freeze / unfreeze time', 'white');
     ui.addLog('speed <n>         — set speed multiplier', 'white');
