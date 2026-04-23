@@ -4,7 +4,7 @@ import { World } from './world.mjs';
 import { UI }    from './ui.mjs';
 import {
   narrateDramatic, observeEntity, narrateEulogy,
-  narrateConflict, narrateWorldEvent, narrateBond,
+  narrateConflict, narrateWorldEvent, narrateBond, narrateArrival,
   shouldNarrate, dramaticEventLabel,
   setModel, getModel,
 } from './narrator.mjs';
@@ -106,6 +106,15 @@ function processEvents(events) {
       case 'event_end':
         ui.addLog(`The ${ev.event.type} has passed.`, 'white');
         break;
+
+      case 'arrival': {
+        const msg = ev.wasEmpty
+          ? `${ev.entity.name} arrives at the edge of ${world.name}. The world breathes again.`
+          : `${ev.entity.name} wanders in from beyond the edge.`;
+        ui.addLog(msg, 'yellow');
+        enqueue(narrateArrival(world, ev.entity, ev.wasEmpty), `${ev.entity.name} — `);
+        break;
+      }
 
       case 'ate':
         if (Math.random() < 0.04) ui.addLog(`${ev.entity.name} finds sustenance.`, 'white');

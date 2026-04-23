@@ -202,7 +202,7 @@ export class UI {
     const pse = world.paused ? ' {yellow-fg}[PAUSED]{/}' : '';
     const evt = world.activeEvent ? ` {red-fg}[${world.activeEvent.type}]{/}` : '';
     this.title.setContent(
-      ` {bold}HOLLOWS{/bold} — {cyan-fg}${world.name}{/} — Day ${world.day} — ${tt}${world.time}{/} — {${sc}-fg}${world.season}{/}${evt}${spd}${pse}`
+      ` {bold}HOLLOWSIM{/bold} — {cyan-fg}${world.name}{/} — Day ${world.day} — ${tt}${world.time}{/} — {${sc}-fg}${world.season}{/}${evt}${spd}${pse}`
     );
   }
 

@@ -250,6 +250,9 @@ export class World {
     // Birth
     this._tryBirth(events);
 
+    // Wanderer arrivals
+    this._tryArrival(events);
+
     // Auto-save
     if (this.tick % SAVE_INTERVAL === 0) this.save();
 
@@ -321,6 +324,52 @@ export class World {
         return;
       }
     }
+  }
+
+  // ── Wanderer arrivals ─────────────────────────────────────
+  _tryArrival(events) {
+    const alive = this.aliveEntities().length;
+    if (alive >= MAX_ENTITIES) return;
+
+    // Chance scales with how empty the world is
+    // 0 alive → ~2% per tick (~15s avg), 1-2 → 0.8%, 3-4 → 0.2%, 5+ → 0.05%
+    const chance = alive === 0 ? 0.02
+                 : alive <= 2  ? 0.008
+                 : alive <= 4  ? 0.002
+                 :               0.0005;
+
+    if (Math.random() > chance) return;
+
+    const tile = this._randomEdgeTile();
+    if (!tile) return;
+
+    const wanderer = new Entity(tile.x, tile.y);
+    wanderer.age    = Math.floor(Math.random() * 30); // arrives with some history
+    wanderer.hunger = 30 + Math.random() * 30;        // a little hungry from the journey
+    wanderer.energy = 50 + Math.random() * 40;
+    this.entities.push(wanderer);
+    this.totalBorn++;
+
+    events.push({ type: 'arrival', entity: wanderer, wasEmpty: alive === 0 });
+  }
+
+  _randomEdgeTile() {
+    // Collect all walkable edge tiles
+    const candidates = [];
+    for (let x = 0; x < WORLD_WIDTH; x++) {
+      if (this.terrain[0][x] !== TERRAIN.WATER && this.terrain[0][x] !== TERRAIN.MOUNTAIN)
+        candidates.push({ x, y: 0 });
+      if (this.terrain[WORLD_HEIGHT-1][x] !== TERRAIN.WATER && this.terrain[WORLD_HEIGHT-1][x] !== TERRAIN.MOUNTAIN)
+        candidates.push({ x, y: WORLD_HEIGHT - 1 });
+    }
+    for (let y = 1; y < WORLD_HEIGHT - 1; y++) {
+      if (this.terrain[y][0] !== TERRAIN.WATER && this.terrain[y][0] !== TERRAIN.MOUNTAIN)
+        candidates.push({ x: 0, y });
+      if (this.terrain[y][WORLD_WIDTH-1] !== TERRAIN.WATER && this.terrain[y][WORLD_WIDTH-1] !== TERRAIN.MOUNTAIN)
+        candidates.push({ x: WORLD_WIDTH - 1, y });
+    }
+    if (!candidates.length) return null;
+    return candidates[Math.floor(Math.random() * candidates.length)];
   }
 
   // ── World events ──────────────────────────────────────────

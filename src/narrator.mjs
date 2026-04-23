@@ -95,6 +95,17 @@ function worldEventPrompt(worldName, worldDay, worldSeason, eventType) {
 Write 1 sentence announcing this event in a ${tone} tone. Poetic but brief. Max 20 words. No exclamation marks.`;
 }
 
+function arrivalPrompt(worldName, worldDay, worldSeason, name, personality, wasEmpty) {
+  const context = wasEmpty
+    ? `The world was completely empty — all souls had perished.`
+    : `The world is sparse and quiet.`;
+  return `In ${worldName}, day ${worldDay}, ${worldSeason}. ${context}
+
+A wanderer named ${name} (${personality}) has arrived at the edge of the world.
+
+Write 1 sentence about their arrival — where they came from or why they walk here. No dialogue. Max 20 words.`;
+}
+
 function bondPrompt(worldName, worldDay, nameA, personalityA, nameB, personalityB) {
   return `In ${worldName}, day ${worldDay}, ${nameA} (${personalityA}) and ${nameB} (${personalityB}) have formed a deep bond.
 
@@ -122,6 +133,10 @@ export async function* narrateConflict(world, winner, loser) {
 
 export async function* narrateWorldEvent(world, eventType) {
   yield* ollamaStream(worldEventPrompt(world.name, world.day, world.season, eventType), 40);
+}
+
+export async function* narrateArrival(world, entity, wasEmpty) {
+  yield* ollamaStream(arrivalPrompt(world.name, world.day, world.season, entity.name, entity.personalityLabel, wasEmpty), 40);
 }
 
 export async function* narrateBond(world, entityA, entityB) {
