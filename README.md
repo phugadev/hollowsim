@@ -43,7 +43,10 @@ The simulation runs as a pure code engine — no AI involved in the core loop. O
 | Two souls fight | Conflict scene |
 | A world event begins (drought, plague…) | Opening line |
 | Two souls form a deep bond | Bond story |
+| A wanderer arrives at the world's edge | Arrival narration |
 | `observe <name>` / click on map | Inner state narration |
+| `ask` | World oracle — Ollama reads the full world state |
+| `talk <name>` | Full conversation with a soul in character |
 
 The world keeps running while narrations stream in. Events queue up so nothing is dropped.
 
@@ -53,11 +56,34 @@ The world keeps running while narrations stream in. Events queue up so nothing i
 
 Press `:` or `/` to enter a command.
 
+**Observation**
+
 | Command | Description |
 |---|---|
 | `observe <name>` | Narrate a soul's inner state |
 | `inspect <name>` | Full dossier: stats, relationships, memory |
 | `souls` | List all living souls |
+| `ask` | World oracle — Ollama narrates what's happening right now |
+
+**Conversation**
+
+| Command | Description |
+|---|---|
+| `talk <name>` | Speak directly with a soul — they respond in character |
+| `bye` | Leave a conversation |
+
+**Divine intervention**
+
+| Command | Description |
+|---|---|
+| `feed <name>` | Deliver sustenance to a starving soul |
+| `calm <name>` | Bring peace — boosts mood, clears rivalries |
+| `smite <name>` | Divine judgment |
+
+**World**
+
+| Command | Description |
+|---|---|
 | `pause` / `resume` | Freeze / unfreeze time |
 | `speed <n>` | Speed multiplier — e.g. `speed 2`, `speed 0.5` |
 | `model <name>` | Swap Ollama model live — e.g. `model gemma4` |
