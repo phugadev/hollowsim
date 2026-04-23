@@ -86,10 +86,10 @@ function processEvents(events) {
     switch (ev.type) {
 
       case 'death':
-        // Plain log immediately; eulogy queued
         ui.addLog(`${ev.entity.name} dies — ${ev.reason}.`, 'red');
         enqueue(narrateEulogy(world, ev.entity, ev.reason), `${ev.entity.name} — `);
-        setTimeout(() => { world.entities = world.entities.filter(e => e !== ev.entity); }, 5000);
+        // Keep dead soul in array until grace window passes so revive can find them
+        setTimeout(() => { world.entities = world.entities.filter(e => e !== ev.entity); }, 310000);
         break;
 
       case 'birth':

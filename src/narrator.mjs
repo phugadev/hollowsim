@@ -169,7 +169,7 @@ export async function* narrateTalkOpening(world, entity) {
   yield* ollamaChat([
     { role: 'system',    content: system },
     { role: 'user',      content: open   },
-  ], 100);
+  ], 250);
 }
 
 export async function* narrateTalkReply(world, entity, history, playerMessage) {
@@ -178,11 +178,12 @@ export async function* narrateTalkReply(world, entity, history, playerMessage) {
     { role: 'system', content: system },
     ...history,
     { role: 'user',   content: playerMessage },
-  ], 120);
+  ], 300);
 }
 
 // ── World oracle ──────────────────────────────────────────────
 export async function* narrateAsk(world) {
+  // uses higher token limit — see ollamaStream call below
   const alive   = world.aliveEntities();
   const soulList = alive.map(e =>
     `- ${e.name} (${e.personalityLabel}): ${e.stateLabel}, hunger ${Math.floor(e.hunger)}/100, bonds: ${[...e.relationships.entries()].filter(([,r])=>r.type==='bond').length}`
@@ -200,7 +201,7 @@ ${soulList}
 The watcher asks to understand what is happening. Speak as the world itself — vivid, present tense.
 2-3 sentences. What is happening right now? What matters? Make it feel alive.`;
 
-  yield* ollamaStream(prompt, 120);
+  yield* ollamaStream(prompt, 300);
 }
 
 // ── Divine interventions ──────────────────────────────────────
