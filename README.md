@@ -4,7 +4,7 @@ A living world simulator that runs in your terminal.
 
 Souls are born, wander, eat, sleep, form bonds, fight, and die — all simulated in real time. Significant moments are narrated by a local AI model via [Ollama](https://ollama.com), so the world generates its own stories without any API costs.
 
-![hollows screenshot](https://raw.githubusercontent.com/phugadev/hollows/main/screenshot.png)
+![hollows screenshot](screenshot.png)
 
 ---
 
