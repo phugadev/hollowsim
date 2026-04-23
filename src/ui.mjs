@@ -95,22 +95,30 @@ export class UI {
     this.screen.key(['q', 'C-c'], () => { this.screen.destroy(); process.exit(0); });
     this.screen.key([':', '/'], () => {
       this.input.setValue('');
+      this.screen.program.disableMouse(); // prevent escape sequences bleeding into input
       this.input.focus();
       this.screen.render();
     });
+  }
+
+  _restoreMouse() {
+    this.screen.program.enableMouse();
   }
 
   onCommand(handler) {
     this.input.on('submit', value => {
       this.input.clearValue();
       this.input.cancel();
+      this._restoreMouse();
       this.screen.render();
-      const cmd = value.trim();
+      // Strip any stray non-printable chars just in case
+      const cmd = value.replace(/[^\x20-\x7E]/g, '').trim();
       if (cmd) handler(cmd);
     });
     this.input.key(['escape'], () => {
       this.input.clearValue();
       this.input.cancel();
+      this._restoreMouse();
       this.screen.render();
     });
   }
