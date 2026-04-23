@@ -9,6 +9,10 @@ let lastNarration = 0;
 
 // ── Core Ollama stream ────────────────────────────────────────
 async function* ollamaStream(prompt, maxTokens = 80) {
+  yield* ollamaChat([{ role: 'user', content: prompt }], maxTokens);
+}
+
+async function* ollamaChat(messages, maxTokens = 80) {
   let res;
   try {
     res = await fetch(OLLAMA_URL, {
@@ -16,7 +20,7 @@ async function* ollamaStream(prompt, maxTokens = 80) {
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify({
         model:   currentModel,
-        messages:[{ role: 'user', content: prompt }],
+        messages,
         stream:  true,
         options: { num_predict: maxTokens, temperature: 0.8 },
       }),
@@ -25,9 +29,9 @@ async function* ollamaStream(prompt, maxTokens = 80) {
     throw new Error(`Ollama unreachable — is it running? (${err.message})`);
   }
 
-  if (!res.ok) {
-    const body = await res.text().catch(() => '');
-    throw new Error(`Ollama ${res.status}: ${body.slice(0, 80)}`);
+  if (!res || !res.ok) {
+    const body = await res?.text().catch(() => '');
+    throw new Error(`Ollama ${res?.status}: ${body?.slice(0, 80)}`);
   }
 
   const reader  = res.body.getReader();
@@ -141,6 +145,72 @@ export async function* narrateArrival(world, entity, wasEmpty) {
 
 export async function* narrateBond(world, entityA, entityB) {
   yield* ollamaStream(bondPrompt(world.name, world.day, entityA.name, entityA.personalityLabel, entityB.name, entityB.personalityLabel), 40);
+}
+
+// ── Talk: soul responds to player ────────────────────────────
+function soulSystemPrompt(world, entity) {
+  const snap = world.getStateSnapshot(entity);
+  return `You are ${snap.name}, a soul wandering the world of ${snap.worldName}.
+
+Your nature: ${snap.personality}.
+Right now: ${snap.state}. Hunger: ${snap.hunger}/100. Energy: ${snap.energy}/100. Mood: ${snap.mood}.
+Bonds: ${snap.bonds || 'none'}.
+Memories: ${snap.memory || 'nothing notable'}.
+It is ${snap.worldTime}, ${snap.worldSeason}, day ${snap.worldDay}.
+
+A divine presence — the watcher of this world — speaks to you directly.
+Respond in first person, true to your nature and current state. If starving or exhausted, let it show in your words.
+Be brief: 1-3 sentences. Never break character. Never acknowledge being an AI or a simulation.`;
+}
+
+export async function* narrateTalkOpening(world, entity) {
+  const system = soulSystemPrompt(world, entity);
+  const open   = `The watcher turns their gaze upon you. How do you find yourself, ${entity.name}?`;
+  yield* ollamaChat([
+    { role: 'system',    content: system },
+    { role: 'user',      content: open   },
+  ], 100);
+}
+
+export async function* narrateTalkReply(world, entity, history, playerMessage) {
+  const system = soulSystemPrompt(world, entity);
+  yield* ollamaChat([
+    { role: 'system', content: system },
+    ...history,
+    { role: 'user',   content: playerMessage },
+  ], 120);
+}
+
+// ── World oracle ──────────────────────────────────────────────
+export async function* narrateAsk(world) {
+  const alive   = world.aliveEntities();
+  const soulList = alive.map(e =>
+    `- ${e.name} (${e.personalityLabel}): ${e.stateLabel}, hunger ${Math.floor(e.hunger)}/100, bonds: ${[...e.relationships.entries()].filter(([,r])=>r.type==='bond').length}`
+  ).join('\n') || '- none';
+
+  const prompt = `You are the living voice of ${world.name}, a world on day ${world.day}, in ${world.season}.
+
+Population: ${alive.length} alive (${world.totalBorn} ever born, ${world.totalDeaths} dead).
+Stability: ${world.stabilityLabel}. Active event: ${world.activeEvent?.type || 'none'}.
+Oldest alive: ${world.oldestAlive ? `${world.oldestAlive.name}, age ${Math.floor(world.oldestAlive.age)}` : 'none'}.
+
+Souls:
+${soulList}
+
+The watcher asks to understand what is happening. Speak as the world itself — vivid, present tense.
+2-3 sentences. What is happening right now? What matters? Make it feel alive.`;
+
+  yield* ollamaStream(prompt, 120);
+}
+
+// ── Divine interventions ──────────────────────────────────────
+export async function* narrateIntervention(world, type, entity) {
+  const prompts = {
+    feed:  `In ${world.name}, the watcher reaches down and delivers sustenance to ${entity.name} (${entity.personalityLabel}), who was starving. Write 1 sentence narrating this divine act. Poetic. No dialogue. Max 20 words.`,
+    calm:  `In ${world.name}, the watcher breathes peace into ${entity.name} (${entity.personalityLabel}), who was troubled. Write 1 sentence. Gentle, quiet. Max 20 words.`,
+    smite: `In ${world.name}, the watcher's judgment falls upon ${entity.name} (${entity.personalityLabel}). Write 1 dramatic sentence of divine destruction. No dialogue. Max 20 words.`,
+  };
+  yield* ollamaStream(prompts[type] ?? prompts.calm, 45);
 }
 
 // ── Trigger helpers ───────────────────────────────────────────

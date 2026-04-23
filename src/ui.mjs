@@ -194,15 +194,16 @@ export class UI {
     this.statsPanel.setContent(out);
   }
 
-  updateTitle(world, speedMult = 1) {
+  updateTitle(world, speedMult = 1, talkName = null) {
     const timeTags = { dawn: '{yellow-fg}', day: '{white-fg}', dusk: '{magenta-fg}', night: '{blue-fg}' };
-    const sc  = SEASON_COLORS[world.season] ?? 'white';
-    const tt  = timeTags[world.time] ?? '{white-fg}';
-    const spd = speedMult !== 1 ? ` {yellow-fg}×${speedMult}{/}` : '';
-    const pse = world.paused ? ' {yellow-fg}[PAUSED]{/}' : '';
-    const evt = world.activeEvent ? ` {red-fg}[${world.activeEvent.type}]{/}` : '';
+    const sc   = SEASON_COLORS[world.season] ?? 'white';
+    const tt   = timeTags[world.time] ?? '{white-fg}';
+    const spd  = speedMult !== 1 ? ` {yellow-fg}×${speedMult}{/}` : '';
+    const pse  = world.paused ? ' {yellow-fg}[PAUSED]{/}' : '';
+    const evt  = world.activeEvent ? ` {red-fg}[${world.activeEvent.type}]{/}` : '';
+    const talk = talkName ? ` {green-fg}[talking to ${talkName}]{/}` : '';
     this.title.setContent(
-      ` {bold}HOLLOWSIM{/bold} — {cyan-fg}${world.name}{/} — Day ${world.day} — ${tt}${world.time}{/} — {${sc}-fg}${world.season}{/}${evt}${spd}${pse}`
+      ` {bold}HOLLOWSIM{/bold} — {cyan-fg}${world.name}{/} — Day ${world.day} — ${tt}${world.time}{/} — {${sc}-fg}${world.season}{/}${evt}${talk}${spd}${pse}`
     );
   }
 

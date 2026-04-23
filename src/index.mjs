@@ -5,6 +5,8 @@ import { UI }    from './ui.mjs';
 import {
   narrateDramatic, observeEntity, narrateEulogy,
   narrateConflict, narrateWorldEvent, narrateBond, narrateArrival,
+  narrateTalkOpening, narrateTalkReply,
+  narrateAsk, narrateIntervention,
   shouldNarrate, dramaticEventLabel,
   setModel, getModel,
 } from './narrator.mjs';
@@ -35,6 +37,20 @@ const ui = new UI();
 let narratingNow  = false;
 let speedMult     = 1;
 let tickDelay     = TICK_MS;
+
+// ── Talk session ──────────────────────────────────────────────
+// { entity, history: [{role, content}] } or null
+let talkSession = null;
+
+function talkActive() { return talkSession !== null && talkSession.entity.alive; }
+
+function endTalk() {
+  if (!talkSession) return;
+  ui.addLog(`─── left ${talkSession.entity.name} ───`, 'yellow');
+  talkSession = null;
+  ui.updateTitle(world, speedMult, talkSession?.entity?.name ?? null);
+  ui.render();
+}
 
 // ── Narrator queue ────────────────────────────────────────────
 // Each item: { gen: AsyncGenerator, prefix: string, color?: string }
@@ -160,12 +176,49 @@ ui.onCommand(async cmd => {
   const norm  = cmd.replace(/^\//, '').trim();
   const lower = norm.toLowerCase();
 
+  // ── Global exits ────────────────────────────────────────────
   if (lower === 'quit' || lower === 'q') { ui.screen.destroy(); process.exit(0); }
 
+  // ── Talk mode routing ────────────────────────────────────────
+  // If in a talk session, non-system input goes to the soul
+  if (talkActive()) {
+    if (lower === 'bye' || lower === 'leave' || lower === 'end' || lower === 'endtalk') {
+      endTalk(); return;
+    }
+    // Check if soul died mid-conversation
+    if (!talkSession.entity.alive) {
+      ui.addLog(`${talkSession.entity.name} is gone.`, 'red');
+      endTalk(); return;
+    }
+    // Route message to soul
+    const playerMsg = norm;
+    ui.addLog(`{white-fg}[You]{/white-fg} ${playerMsg}`, 'white');
+    talkSession.history.push({ role: 'user', content: playerMsg });
+
+    const replyGen = narrateTalkReply(world, talkSession.entity, talkSession.history, playerMsg);
+    let fullReply = '';
+    ui.openNarrativeLine(`${talkSession.entity.name}  `);
+    narratingNow = true;
+    try {
+      for await (const chunk of replyGen) {
+        ui.appendNarrative(chunk);
+        fullReply += chunk;
+      }
+      ui.addLog('', 'white');
+      talkSession.history.push({ role: 'assistant', content: fullReply });
+    } catch (err) {
+      ui.addLog(`Talk error: ${err.message.slice(0, 60)}`, 'red');
+    } finally {
+      narratingNow = false;
+    }
+    return;
+  }
+
+  // ── Normal commands ──────────────────────────────────────────
   if (lower === 'pause') {
     world.paused = true;
     ui.addLog('Time has stilled.', 'yellow');
-    ui.updateTitle(world, speedMult); ui.render(); return;
+    ui.updateTitle(world, speedMult, talkSession?.entity?.name ?? null); ui.render(); return;
   }
   if (lower === 'resume' || lower === 'unpause') {
     world.paused = false;
@@ -180,13 +233,13 @@ ui.onCommand(async cmd => {
     speedMult = mult;
     tickDelay = Math.round(TICK_MS / mult);
     ui.addLog(`Speed ×${mult} (${tickDelay}ms/tick).`, 'yellow');
-    ui.updateTitle(world, speedMult); ui.render(); return;
+    ui.updateTitle(world, speedMult, talkSession?.entity?.name ?? null); ui.render(); return;
   }
 
   if (lower.startsWith('model')) {
     const parts = lower.split(/\s+/);
     if (parts.length < 2) {
-      ui.addLog(`Active model: ${getModel()}. Usage: model <name>  e.g. model gemma4`, 'yellow'); return;
+      ui.addLog(`Active model: ${getModel()}. Usage: model <name>`, 'yellow'); return;
     }
     setModel(parts[1]);
     ui.addLog(`Model switched to ${getModel()}.`, 'yellow'); return;
@@ -194,12 +247,90 @@ ui.onCommand(async cmd => {
 
   if (lower === 'save') { world.save(); ui.addLog('World saved.', 'yellow'); return; }
 
+  // ── Talk ─────────────────────────────────────────────────────
+  if (lower.startsWith('talk ')) {
+    const q = norm.slice(5).trim().toLowerCase();
+    const e = world.aliveEntities().find(en => en.name.toLowerCase().startsWith(q));
+    if (!e) { ui.addLog(`No living soul named "${q}".`, 'red'); return; }
+    if (narratingNow) { ui.addLog('Wait for the current narration to finish.', 'yellow'); return; }
+
+    talkSession = { entity: e, history: [] };
+    ui.addLog(`─── speaking with ${e.name} ───`, 'yellow');
+    ui.addLog(`${e.name} is ${e.stateLabel}, age ${Math.floor(e.age)}. Type your message. "bye" to leave.`, 'white');
+    ui.updateTitle(world, speedMult, talkSession?.entity?.name ?? null);
+
+    // Opening line from the soul
+    narratingNow = true;
+    let opening = '';
+    ui.openNarrativeLine(`${e.name}  `);
+    try {
+      for await (const chunk of narrateTalkOpening(world, e)) {
+        ui.appendNarrative(chunk);
+        opening += chunk;
+      }
+      ui.addLog('', 'white');
+      talkSession.history.push({ role: 'assistant', content: opening });
+    } catch (err) {
+      ui.addLog(`Talk error: ${err.message.slice(0, 60)}`, 'red');
+    } finally {
+      narratingNow = false;
+    }
+    return;
+  }
+
+  // ── World oracle ──────────────────────────────────────────────
+  if (lower === 'ask') {
+    enqueue(narrateAsk(world), '');
+    return;
+  }
+
+  // ── Divine interventions ──────────────────────────────────────
+  if (lower.startsWith('feed ') || lower.startsWith('calm ') || lower.startsWith('smite ')) {
+    const [verb, ...rest] = norm.split(/\s+/);
+    const q = rest.join(' ').toLowerCase();
+    const e = world.aliveEntities().find(en => en.name.toLowerCase().startsWith(q));
+    if (!e) { ui.addLog(`No living soul named "${q}".`, 'red'); return; }
+
+    switch (verb.toLowerCase()) {
+      case 'feed':
+        e.hunger = 5;
+        ui.addLog(`You reach down and feed ${e.name}.`, 'yellow');
+        break;
+      case 'calm':
+        e.mood = 85;
+        e.energy = Math.min(100, e.energy + 30);
+        for (const [id, r] of e.relationships) if (r.type === 'rival') e.setRel(id, 'neutral', 0);
+        ui.addLog(`You breathe peace into ${e.name}.`, 'yellow');
+        break;
+      case 'smite':
+        e.alive = false;
+        e.remember('struck down by the watcher');
+        world.totalDeaths++;
+        ui.addLog(`Your judgment falls upon ${e.name}.`, 'red');
+        setTimeout(() => { world.entities = world.entities.filter(en => en !== e); }, 4000);
+        break;
+    }
+    enqueue(narrateIntervention(world, verb.toLowerCase(), e), '');
+    return;
+  }
+
+  // ── Help ─────────────────────────────────────────────────────
   if (lower === 'help') {
+    ui.addLog('── observation ─────────────────', 'white');
     ui.addLog('observe <name>    — narrate a soul\'s inner state', 'white');
-    ui.addLog('inspect <name>    — full dossier: stats, memory, relationships', 'white');
+    ui.addLog('inspect <name>    — full dossier: stats, memory, bonds', 'white');
     ui.addLog('souls             — list all living souls', 'white');
+    ui.addLog('ask               — world oracle: what is happening right now', 'white');
+    ui.addLog('── conversation ────────────────', 'white');
+    ui.addLog('talk <name>       — speak directly with a soul', 'white');
+    ui.addLog('bye               — leave a conversation', 'white');
+    ui.addLog('── divine acts ─────────────────', 'white');
+    ui.addLog('feed <name>       — give sustenance', 'white');
+    ui.addLog('calm <name>       — bring peace, clear rivalries', 'white');
+    ui.addLog('smite <name>      — divine judgment', 'white');
+    ui.addLog('── world ───────────────────────', 'white');
     ui.addLog('pause / resume    — freeze / unfreeze time', 'white');
-    ui.addLog('speed <n>         — set speed multiplier (e.g. speed 2)', 'white');
+    ui.addLog('speed <n>         — set speed multiplier', 'white');
     ui.addLog(`model <name>      — swap Ollama model (active: ${getModel()})`, 'white');
     ui.addLog('save              — save world now', 'white');
     ui.addLog('click map         — observe that soul instantly', 'white');
@@ -258,7 +389,7 @@ function tick() {
   ui.renderWorld(world);
   ui.renderEntities(world);
   ui.renderStats(world);
-  ui.updateTitle(world, speedMult);
+  ui.updateTitle(world, speedMult, talkSession?.entity?.name ?? null);
   ui.render();
 
   setTimeout(tick, tickDelay);
@@ -279,7 +410,7 @@ ui.addLog('', 'white');
 ui.renderWorld(world);
 ui.renderEntities(world);
 ui.renderStats(world);
-ui.updateTitle(world, speedMult);
+ui.updateTitle(world, speedMult, talkSession?.entity?.name ?? null);
 ui.render();
 
 setTimeout(tick, tickDelay);
