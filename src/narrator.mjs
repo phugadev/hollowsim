@@ -72,6 +72,14 @@ ${snap.name}, age ${snap.age}: ${snap.state}. Hunger ${snap.hunger}/100. Energy 
 Write 2-3 sentences about their inner state — what they feel, want, or fear. Third person. Literary. Max 60 words.`;
 }
 
+function dreamPrompt(snap) {
+  return `Voice of a world called ${snap.worldName}. ${snap.name} is sleeping. Day ${snap.worldDay}, ${snap.worldSeason}.
+
+Nature: ${snap.personality}. Bonds: ${snap.bonds || 'none'}. Last memories: ${snap.memory || 'nothing notable'}.
+
+Write 1-2 sentences describing what ${snap.name} dreams of — symbolic, fragmented, rooted in what they carry. Third person. Literary. No dialogue. Max 40 words.`;
+}
+
 function eulogyPrompt(snap, deathReason) {
   return `Write a 2-sentence eulogy for ${snap.name}, who died of ${deathReason} in ${snap.worldName} on day ${snap.worldDay}.
 
@@ -124,6 +132,10 @@ export async function* narrateDramatic(world, entity, eventType) {
 
 export async function* observeEntity(world, entity) {
   yield* ollamaStream(observePrompt(world.getStateSnapshot(entity)), 120);
+}
+
+export async function* narrateDream(world, entity) {
+  yield* ollamaStream(dreamPrompt(world.getStateSnapshot(entity)), 80);
 }
 
 export async function* narrateEulogy(world, entity, deathReason) {

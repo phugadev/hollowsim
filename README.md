@@ -44,7 +44,7 @@ The simulation runs as a pure code engine — no AI involved in the core loop. O
 | A world event begins (drought, plague…) | Opening line |
 | Two souls form a deep bond | Bond story |
 | A wanderer arrives at the world's edge | Arrival narration |
-| `observe <name>` / click on map | Inner state narration |
+| `observe <name>` / click on map | Inner state narration (or dream narration if sleeping) |
 | `ask` | World oracle — Ollama reads the full world state |
 | `talk <name>` | Full conversation with a soul in character |
 
@@ -60,10 +60,11 @@ Press `:` or `/` to enter a command.
 
 | Command | Description |
 |---|---|
-| `observe <name>` | Narrate a soul's inner state |
+| `observe <name>` | Narrate a soul's inner state (dream if sleeping) |
 | `inspect <name>` | Full dossier: stats, relationships, memory |
 | `souls` | List all living souls |
 | `ask` | World oracle — Ollama narrates what's happening right now |
+| `history` | Chronicle of significant events since the world began |
 
 **Conversation**
 

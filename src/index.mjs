@@ -3,7 +3,7 @@ import readline from 'readline';
 import { World } from './world.mjs';
 import { UI }    from './ui.mjs';
 import {
-  narrateDramatic, observeEntity, narrateEulogy,
+  narrateDramatic, observeEntity, narrateDream, narrateEulogy,
   narrateConflict, narrateWorldEvent, narrateBond, narrateArrival,
   narrateTalkOpening, narrateTalkReply,
   narrateAsk, narrateIntervention,
@@ -87,6 +87,7 @@ function processEvents(events) {
 
       case 'death':
         ui.addLog(`${ev.entity.name} dies — ${ev.reason}.`, 'red');
+        world.addHistory(`Day ${world.day}: ${ev.entity.name} died of ${ev.reason}, age ${Math.floor(ev.entity.age)}.`);
         enqueue(narrateEulogy(world, ev.entity, ev.reason), `${ev.entity.name} — `);
         // Keep dead soul in array until grace window passes so revive can find them
         setTimeout(() => { world.entities = world.entities.filter(e => e !== ev.entity); }, 310000);
@@ -94,17 +95,20 @@ function processEvents(events) {
 
       case 'birth':
         ui.addLog(`${ev.entity.name} enters ${world.name}, born of ${ev.parent.name}.`, 'green');
+        world.addHistory(`Day ${world.day}: ${ev.entity.name} was born of ${ev.parent.name}.`);
         break;
 
       case 'bond_formed': {
         const [a, b] = ev.entities;
         ui.addLog(`${a.name} and ${b.name} have formed a bond.`, 'cyan');
+        world.addHistory(`Day ${world.day}: ${a.name} and ${b.name} formed a deep bond.`);
         // Only narrate deep bonds (not every small one — too noisy)
         if (Math.random() < 0.5) enqueue(narrateBond(world, a, b), '');
         break;
       }
 
       case 'conflict':
+        world.addHistory(`Day ${world.day}: ${ev.winner.name} prevailed over ${ev.loser.name}.`);
         enqueue(narrateConflict(world, ev.winner, ev.loser), '');
         break;
 
@@ -112,15 +116,18 @@ function processEvents(events) {
         const labels = { spring: 'Spring stirs.', summer: 'Summer settles in.', autumn: 'Autumn descends.', winter: 'Winter arrives.' };
         const colors = { spring: 'green', summer: 'white', autumn: 'yellow', winter: 'cyan' };
         ui.addLog(labels[ev.season] ?? `Season: ${ev.season}`, colors[ev.season] ?? 'white');
+        world.addHistory(`Day ${world.day}: ${ev.season} began.`);
         break;
       }
 
       case 'world_event_start':
+        world.addHistory(`Day ${world.day}: a ${ev.event.type} began.`);
         enqueue(narrateWorldEvent(world, ev.event.type), '');
         break;
 
       case 'event_end':
         ui.addLog(`The ${ev.event.type} has passed.`, 'white');
+        world.addHistory(`Day ${world.day}: the ${ev.event.type} ended.`);
         break;
 
       case 'arrival': {
@@ -128,6 +135,7 @@ function processEvents(events) {
           ? `${ev.entity.name} arrives at the edge of ${world.name}. The world breathes again.`
           : `${ev.entity.name} wanders in from beyond the edge.`;
         ui.addLog(msg, 'yellow');
+        world.addHistory(`Day ${world.day}: ${ev.entity.name} arrived from beyond the edge.`);
         enqueue(narrateArrival(world, ev.entity, ev.wasEmpty), `${ev.entity.name} — `);
         break;
       }
@@ -142,7 +150,11 @@ function processEvents(events) {
 // ── Inspect / observe helpers ─────────────────────────────────
 function doObserve(entity) {
   if (!entity) return;
-  enqueue(observeEntity(world, entity), `${entity.name} — `);
+  if (entity.state === 'sleeping') {
+    enqueue(narrateDream(world, entity), `${entity.name} dreams — `);
+  } else {
+    enqueue(observeEntity(world, entity), `${entity.name} — `);
+  }
 }
 
 function doInspect(entity) {
@@ -350,10 +362,11 @@ ui.onCommand(async cmd => {
   // ── Help ─────────────────────────────────────────────────────
   if (lower === 'help') {
     ui.addLog('── observation ─────────────────', 'white');
-    ui.addLog('observe <name>    — narrate a soul\'s inner state', 'white');
+    ui.addLog('observe <name>    — narrate inner state (or dreams, if sleeping)', 'white');
     ui.addLog('inspect <name>    — full dossier: stats, memory, bonds', 'white');
     ui.addLog('souls             — list all living souls', 'white');
     ui.addLog('ask               — world oracle: what is happening right now', 'white');
+    ui.addLog('history           — chronicle of significant events', 'white');
     ui.addLog('── conversation ────────────────', 'white');
     ui.addLog('talk <name>       — speak directly with a soul', 'white');
     ui.addLog('bye               — leave a conversation', 'white');
@@ -369,6 +382,15 @@ ui.onCommand(async cmd => {
     ui.addLog('save              — save world now', 'white');
     ui.addLog('click map         — observe that soul instantly', 'white');
     ui.addLog('q                 — quit', 'white');
+    return;
+  }
+
+  if (lower === 'history' || lower === 'chronicle') {
+    const h = world.history;
+    if (!h.length) { ui.addLog('No history yet — the world is young.', 'white'); return; }
+    ui.addLog('── chronicle ───────────────────', 'white');
+    for (const entry of h) ui.addLog(`  ${entry.text}`, 'white');
+    ui.addLog('────────────────────────────────', 'white');
     return;
   }
 

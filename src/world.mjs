@@ -34,6 +34,9 @@ export class World {
     // Active world event
     this.activeEvent = null; // { type, endsDay }
 
+    // Chronicle — last 40 significant events, persisted
+    this.history = [];
+
     this.terrain   = this._generateTerrain();
     this.foodNodes = new Map();
     this.entities  = [];
@@ -396,6 +399,12 @@ export class World {
     this._placeFoodNodes(6);
   }
 
+  // ── History ───────────────────────────────────────────────
+  addHistory(text) {
+    this.history.push({ day: this.day, text });
+    if (this.history.length > 40) this.history.shift();
+  }
+
   // ── Narrative support ─────────────────────────────────────
   getMostDramatic() {
     const alive = this.aliveEntities();
@@ -438,6 +447,7 @@ export class World {
       totalBorn:   this.totalBorn,
       oldestEver:  this.oldestEver,
       activeEvent: this.activeEvent,
+      history:     this.history,
       terrain:     this.terrain.map(r => r.join('')).join('|'),
       foodNodes:   [...this.foodNodes.entries()].map(([k, v]) => ({ k, ...v })),
       entities:    this.entities.map(e => ({
@@ -465,6 +475,7 @@ export class World {
       w.totalBorn   = data.totalBorn   ?? INITIAL_ENTITIES;
       w.oldestEver  = data.oldestEver  ?? null;
       w.activeEvent = data.activeEvent ?? null;
+      w.history     = data.history     ?? [];
 
       w.terrain = data.terrain.split('|').map(row => row.split(''));
       w.foodNodes = new Map(data.foodNodes.map(n => [n.k, { x: n.x, y: n.y, amount: n.amount }]));
