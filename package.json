@@ -1,0 +1,15 @@
+{
+  "name": "hollows",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "A living world in your terminal.",
+  "scripts": {
+    "start": "node src/index.mjs",
+    "dev": "node --watch src/index.mjs"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "blessed": "^0.1.81",
+    "dotenv": "^16.4.5"
+  }
+}
