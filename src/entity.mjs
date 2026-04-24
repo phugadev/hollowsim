@@ -26,6 +26,8 @@ export class Entity {
       curiosity: Math.random(),
     };
 
+    this.fulfillment = 45 + Math.random() * 40;
+
     this.state  = 'wandering';
     this.target = null;
 
@@ -91,6 +93,7 @@ export class Entity {
     if (this.mood    < 20) s += 15;
     if (this.age     > 110) s += 20;
     if (this.starvingTicks > 1) s += 25;
+    if (this.fulfillment < 20) s += 20;
     for (const [, r] of this.relationships) {
       if (r.type === 'rival') s += 10;
       if (r.type === 'bond'  && r.strength > 0.9) s += 5;
@@ -109,8 +112,16 @@ export class Entity {
     this.hunger = clamp(this.hunger + hungerRate, 0, 100);
     this.energy = clamp(this.energy + energyRate, 0, 100);
 
-    if (this.state === 'socializing') this.mood = clamp(this.mood + 1,    0, 100);
-    else if (this.hunger > 75)        this.mood = clamp(this.mood - 0.8,  0, 100);
+    if (this.state === 'socializing') {
+      this.mood        = clamp(this.mood        + 1,   0, 100);
+      this.fulfillment = clamp(this.fulfillment + 1.5, 0, 100);
+    } else if (this.state === 'sleeping') {
+      this.fulfillment = clamp(this.fulfillment + 0.3, 0, 100);
+    } else {
+      this.fulfillment = clamp(this.fulfillment - 0.06, 0, 100);
+    }
+    if (this.hunger > 75) this.mood = clamp(this.mood - 0.8, 0, 100);
+    if (this.fulfillment < 20) this.mood = clamp(this.mood - 0.4, 0, 100);
 
     this.determineState(world);
     const event = this.executeState(world);
@@ -163,10 +174,31 @@ export class Entity {
     }
   }
 
+  static DISCOVERIES = [
+    'found a moment of quiet by the water',
+    'watched light fall through the forest canopy',
+    'sat at the edge of a hill and looked outward',
+    'traced the shape of clouds in the open sky',
+    'discovered a hollow where the wind was still',
+    'followed a path no one else had walked today',
+    'paused at a ridge and watched the world below',
+    'lingered in warmth where sunlight pooled',
+    'listened to the world settle at dusk',
+    'walked until the familiar became strange',
+  ];
+
   doWander(world) {
-    const stormRange = world.activeEvent?.type === 'storm' ? 0 : 0;
-    const range = stormRange || (Math.ceil(this.personality.curiosity * 2) + 1);
+    const range = world.activeEvent?.type === 'storm' ? 0
+                : (Math.ceil(this.personality.curiosity * 2) + 1);
     this._stepRandom(world, range);
+
+    // Curious souls occasionally find something meaningful
+    if (Math.random() < 0.003 * (0.5 + this.personality.curiosity)) {
+      const label = Entity.DISCOVERIES[Math.floor(Math.random() * Entity.DISCOVERIES.length)];
+      this.fulfillment = clamp(this.fulfillment + 12, 0, 100);
+      this.remember(label);
+      return { type: 'discovery', entity: this, label };
+    }
     return null;
   }
 
@@ -182,6 +214,7 @@ export class Entity {
     if (world.consumeFood(this.x, this.y)) {
       if (this.hunger < 20) {
         this.state = 'wandering';
+        this.fulfillment = clamp(this.fulfillment + 8, 0, 100); // a proper meal
         this.remember('found food and ate well');
         return { type: 'ate', entity: this };
       }

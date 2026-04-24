@@ -428,6 +428,7 @@ export class World {
       worldName: this.name, worldDay: this.day, worldTime: this.time, worldSeason: this.season,
       name: entity.name, age: Math.floor(entity.age), state: entity.stateLabel,
       hunger: Math.floor(entity.hunger), energy: Math.floor(entity.energy),
+      fulfillment: Math.floor(entity.fulfillment ?? 50),
       mood: entity.moodLabel, personality: entity.personalityLabel,
       nearby: nearby.join(', ') || 'none',
       bonds:  bonds.join(', ')  || 'none',
@@ -453,6 +454,7 @@ export class World {
       entities:    this.entities.map(e => ({
         id: e.id, name: e.name, x: e.x, y: e.y, color: e.color,
         age: e.age, hunger: e.hunger, energy: e.energy, mood: e.mood,
+        fulfillment: e.fulfillment ?? 50,
         alive: e.alive, personality: e.personality,
         relationships: [...e.relationships.entries()],
         memory: e.memory, starvingTicks: e.starvingTicks,
@@ -488,6 +490,7 @@ export class World {
           mood: d.mood, alive: d.alive, personality: d.personality,
           memory: d.memory, starvingTicks: d.starvingTicks ?? 0,
         });
+        e.fulfillment   = d.fulfillment ?? 50;
         e.relationships = new Map(d.relationships ?? []);
         return e;
       });

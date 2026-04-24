@@ -92,13 +92,18 @@ export class UI {
   }
 
   _keys() {
+    this._inputOpen = false;
     this.screen.key(['q', 'C-c'], () => { this.screen.destroy(); process.exit(0); });
     this.screen.key([':', '/'], () => {
+      this._inputOpen = true;
       this.input.setValue('');
       this.screen.program.disableMouse(); // prevent escape sequences bleeding into input
       this.input.focus();
       this.screen.render();
     });
+    // Chronicle scroll — [ to go up, ] to go down
+    this.screen.key(['['], () => { if (!this._inputOpen) { this.log.scroll(-5); this.screen.render(); } });
+    this.screen.key([']'], () => { if (!this._inputOpen) { this.log.scroll(5);  this.screen.render(); } });
   }
 
   _restoreMouse() {
@@ -107,6 +112,7 @@ export class UI {
 
   onCommand(handler) {
     this.input.on('submit', value => {
+      this._inputOpen = false;
       this.input.clearValue();
       this.input.cancel();
       this._restoreMouse();
@@ -116,6 +122,7 @@ export class UI {
       if (cmd) handler(cmd);
     });
     this.input.key(['escape'], () => {
+      this._inputOpen = false;
       this.input.clearValue();
       this.input.cancel();
       this._restoreMouse();
@@ -158,16 +165,32 @@ export class UI {
 
   renderEntities(world) {
     const alive = world.aliveEntities();
+    const GRACE = 300000;
     let out = '';
+
     for (const e of alive) {
       const col  = TAG[e.color] ?? TAG.white;
+      // F = fullness (inverted hunger — full bar = well fed, empty = starving)
       const hTag = e.hunger > 80 ? '{red-fg}' : e.hunger > 55 ? '{yellow-fg}' : '{green-fg}';
       const eTag = e.energy < 20 ? '{red-fg}' : '{cyan-fg}';
+      const ful  = e.fulfillment ?? 50;
+      const vTag = ful < 25 ? '{red-fg}' : ful < 50 ? '{yellow-fg}' : '{magenta-fg}';
       out += `${col}${e.name}{/} {white-fg}d${Math.floor(e.age)}{/} `;
-      out += `${hTag}H${bar(e.hunger, 100)}{/} ${eTag}E${bar(e.energy, 100)}{/} `;
+      out += `${hTag}F${bar(100 - e.hunger, 100, 4)}{/} ${eTag}E${bar(e.energy, 100, 4)}{/} ${vTag}V${bar(ful, 100, 4)}{/} `;
       out += `{white-fg}[${e.stateLabel}]{/}\n`;
     }
-    if (!alive.length) out = '{red-fg}The world is silent.{/}';
+
+    // Show recently dead souls with revive countdown
+    const recentDead = world.entities.filter(e =>
+      !e.alive && e.diedAt && Date.now() - e.diedAt < GRACE
+    );
+    for (const e of recentDead) {
+      const secsLeft = Math.ceil((GRACE - (Date.now() - e.diedAt)) / 1000);
+      const minsLeft = Math.ceil(secsLeft / 60);
+      out += `{red-fg}† ${e.name}{/} {yellow-fg}revive: ${minsLeft}m left{/}\n`;
+    }
+
+    if (!alive.length && !recentDead.length) out = '{red-fg}The world is silent.{/}';
     this.entityList.setContent(out);
     this.entityList.setLabel(` souls (${alive.length}) `);
   }

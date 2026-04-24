@@ -87,6 +87,7 @@ function processEvents(events) {
 
       case 'death':
         ui.addLog(`${ev.entity.name} dies — ${ev.reason}.`, 'red');
+        ui.addLog(`  revive ${ev.entity.name} within 5 minutes.`, 'yellow');
         world.addHistory(`Day ${world.day}: ${ev.entity.name} died of ${ev.reason}, age ${Math.floor(ev.entity.age)}.`);
         enqueue(narrateEulogy(world, ev.entity, ev.reason), `${ev.entity.name} — `);
         // Keep dead soul in array until grace window passes so revive can find them
@@ -139,6 +140,10 @@ function processEvents(events) {
         enqueue(narrateArrival(world, ev.entity, ev.wasEmpty), `${ev.entity.name} — `);
         break;
       }
+
+      case 'discovery':
+        ui.addLog(`${ev.entity.name} ${ev.label}.`, 'white');
+        break;
 
       case 'ate':
         if (Math.random() < 0.04) ui.addLog(`${ev.entity.name} finds sustenance.`, 'white');
@@ -306,7 +311,8 @@ ui.onCommand(async cmd => {
     switch (verb.toLowerCase()) {
       case 'feed':
         e.hunger       = 5;
-        e.starvingTicks = 0; // reset starvation counter so feed actually saves them
+        e.starvingTicks = 0;
+        e.energy = Math.max(e.energy, 30); // feed saves from exhaustion too
         ui.addLog(`You reach down and feed ${e.name}.`, 'yellow');
         break;
       case 'calm':

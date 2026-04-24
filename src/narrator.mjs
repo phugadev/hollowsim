@@ -67,17 +67,17 @@ Write 1-2 sentences of evocative literary narration. Third person. No dialogue. 
 function observePrompt(snap) {
   return `Voice of a world called ${snap.worldName}. Day ${snap.worldDay}, ${snap.worldTime}, ${snap.worldSeason}.
 
-${snap.name}, age ${snap.age}: ${snap.state}. Hunger ${snap.hunger}/100. Energy ${snap.energy}/100. Mood: ${snap.mood}. Nature: ${snap.personality}. Nearby: ${snap.nearby}. Bonds: ${snap.bonds}. Memories: ${snap.memory}.
+${snap.name}, age ${snap.age}: ${snap.state}. Hunger ${snap.hunger}/100. Energy ${snap.energy}/100. Fulfillment ${snap.fulfillment}/100. Mood: ${snap.mood}. Nature: ${snap.personality}. Nearby: ${snap.nearby}. Bonds: ${snap.bonds}. Memories: ${snap.memory}.
 
-Write 2-3 sentences about their inner state — what they feel, want, or fear. Third person. Literary. Max 60 words.`;
+Write 2-3 sentences about their inner state — what they feel, want, or fear. If fulfillment is low, let longing or restlessness show. Third person. Literary. Max 60 words.`;
 }
 
 function dreamPrompt(snap) {
   return `Voice of a world called ${snap.worldName}. ${snap.name} is sleeping. Day ${snap.worldDay}, ${snap.worldSeason}.
 
-Nature: ${snap.personality}. Bonds: ${snap.bonds || 'none'}. Last memories: ${snap.memory || 'nothing notable'}.
+Nature: ${snap.personality}. Fulfillment: ${snap.fulfillment}/100. Bonds: ${snap.bonds || 'none'}. Last memories: ${snap.memory || 'nothing notable'}.
 
-Write 1-2 sentences describing what ${snap.name} dreams of — symbolic, fragmented, rooted in what they carry. Third person. Literary. No dialogue. Max 40 words.`;
+Write 1-2 sentences describing what ${snap.name} dreams of — symbolic, fragmented, rooted in what they carry. If fulfillment is low, the dream aches. Third person. Literary. No dialogue. Max 40 words.`;
 }
 
 function eulogyPrompt(snap, deathReason) {
@@ -165,7 +165,7 @@ function soulSystemPrompt(world, entity) {
   return `You are ${snap.name}, a soul wandering the world of ${snap.worldName}.
 
 Your nature: ${snap.personality}.
-Right now: ${snap.state}. Hunger: ${snap.hunger}/100. Energy: ${snap.energy}/100. Mood: ${snap.mood}.
+Right now: ${snap.state}. Hunger: ${snap.hunger}/100. Energy: ${snap.energy}/100. Fulfillment: ${snap.fulfillment}/100. Mood: ${snap.mood}.
 Bonds: ${snap.bonds || 'none'}.
 Memories: ${snap.memory || 'nothing notable'}.
 It is ${snap.worldTime}, ${snap.worldSeason}, day ${snap.worldDay}.
@@ -234,10 +234,11 @@ export function shouldNarrate(entity) {
 }
 
 export function dramaticEventLabel(entity) {
-  if (entity.starvingTicks > 2) return 'desperate starvation';
-  if (entity.hunger > 85)       return 'near starvation';
-  if (entity.energy < 10)       return 'total exhaustion';
-  if (entity.age > 120)         return 'approaching end of life';
-  if (entity.mood < 20)         return 'deep despair';
+  if (entity.starvingTicks > 2)        return 'desperate starvation';
+  if (entity.hunger > 85)              return 'near starvation';
+  if (entity.energy < 10)              return 'total exhaustion';
+  if (entity.age > 120)                return 'approaching end of life';
+  if (entity.mood < 20)                return 'deep despair';
+  if ((entity.fulfillment ?? 50) < 20) return 'a longing for more than this';
   return 'inner crisis';
 }
