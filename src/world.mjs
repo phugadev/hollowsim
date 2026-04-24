@@ -482,7 +482,7 @@ export class World {
   // ── Persistence ───────────────────────────────────────────
   save() {
     const data = {
-      v:           2,
+      v:           3,
       name:        this.name,
       day:         this.day,
       tick:        this.tick,
@@ -512,7 +512,7 @@ export class World {
     if (!existsSync(SAVE_PATH)) return null;
     try {
       const data = JSON.parse(readFileSync(SAVE_PATH, 'utf8'));
-      if (!data.v || data.v < 2) return null; // incompatible old save
+      if (!data.v || data.v < 3) return null; // incompatible — world size changed
 
       const w = new World(data.name);
       w.day         = data.day;
