@@ -11,10 +11,11 @@ const TAG = {
 };
 
 const GLYPH = {
-  [TERRAIN.PLAINS]:   { ch: '.', tag: '{white-fg}' },
-  [TERRAIN.WATER]:    { ch: '~', tag: '{cyan-fg}'  },
-  [TERRAIN.MOUNTAIN]: { ch: '^', tag: '{white-fg}' },
-  [TERRAIN.FOREST]:   { ch: 'T', tag: '{green-fg}' },
+  [TERRAIN.PLAINS]:   { ch: '.', tag: '{white-fg}'   },
+  [TERRAIN.WATER]:    { ch: '~', tag: '{cyan-fg}'    },
+  [TERRAIN.MOUNTAIN]: { ch: '^', tag: '{white-fg}'   },
+  [TERRAIN.FOREST]:   { ch: 'T', tag: '{green-fg}'   },
+  [TERRAIN.RUINS]:    { ch: '#', tag: '{magenta-fg}' },
 };
 
 const SEASON_COLORS = { spring: 'green', summer: 'white', autumn: 'yellow', winter: 'cyan' };

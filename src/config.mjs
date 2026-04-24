@@ -1,10 +1,10 @@
-export const WORLD_WIDTH  = 80;
-export const WORLD_HEIGHT = 28;
+export const WORLD_WIDTH  = 130;
+export const WORLD_HEIGHT = 36;
 export const TICK_MS      = 450;
 
-export const INITIAL_ENTITIES   = 10;
-export const MAX_ENTITIES       = 22;
-export const FOOD_NODES         = 22;
+export const INITIAL_ENTITIES   = 12;
+export const MAX_ENTITIES       = 28;
+export const FOOD_NODES         = 30;
 export const NARRATIVE_COOLDOWN = 22000;
 export const DRAMATIC_THRESHOLD = 75;
 
@@ -21,4 +21,5 @@ export const TERRAIN = {
   WATER:    '~',
   MOUNTAIN: '^',
   FOREST:   'T',
+  RUINS:    '#',
 };

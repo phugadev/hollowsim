@@ -1,6 +1,8 @@
 import { generateName } from './names.mjs';
 import { WORLD_WIDTH, WORLD_HEIGHT, TERRAIN } from './config.mjs';
 
+const IMPASSABLE = new Set([TERRAIN.WATER, TERRAIN.MOUNTAIN]);
+
 const COLORS = ['magenta','cyan','yellow','green','red','blue','white'];
 let colorIdx = 0;
 
@@ -187,6 +189,18 @@ export class Entity {
     'lingered in warmth where sunlight pooled',
     'listened to the world settle at dusk',
     'walked until the familiar became strange',
+    'climbed to a high ridge and saw the whole world laid out below',
+    'followed a stream until it disappeared into the earth',
+    'rested at the base of an ancient tree and felt very small',
+  ];
+
+  static RUIN_DISCOVERIES = [
+    'traced worn carvings on a crumbling stone',
+    'sat in the quiet of a place where others once gathered',
+    'found a strange symbol etched into an old foundation',
+    'knelt among the ruins and felt the weight of what was lost',
+    'discovered a doorway that led nowhere, and stood in it anyway',
+    'pressed a palm to cold stone and felt the echo of old lives',
   ];
 
   doWander(world) {
@@ -194,7 +208,15 @@ export class Entity {
                 : (Math.ceil(this.personality.curiosity * 2) + 1);
     this._stepRandom(world, range);
 
-    // Curious souls occasionally find something meaningful
+    // Ruins carry their own discovery chance — stronger than open plains
+    if (world.terrainAt(this.x, this.y) === TERRAIN.RUINS && Math.random() < 0.035) {
+      const label = Entity.RUIN_DISCOVERIES[Math.floor(Math.random() * Entity.RUIN_DISCOVERIES.length)];
+      this.fulfillment = clamp(this.fulfillment + 14, 0, 100);
+      this.remember(label);
+      return { type: 'discovery', entity: this, label };
+    }
+
+    // General curious discovery while wandering
     if (Math.random() < 0.003 * (0.5 + this.personality.curiosity)) {
       const label = Entity.DISCOVERIES[Math.floor(Math.random() * Entity.DISCOVERIES.length)];
       this.fulfillment = clamp(this.fulfillment + 12, 0, 100);
@@ -279,7 +301,7 @@ export class Entity {
   _tryMove(world, nx, ny) {
     nx = clamp(nx, 0, WORLD_WIDTH  - 1);
     ny = clamp(ny, 0, WORLD_HEIGHT - 1);
-    if (world.terrainAt(nx, ny) !== TERRAIN.WATER && world.terrainAt(nx, ny) !== TERRAIN.MOUNTAIN) {
+    if (!IMPASSABLE.has(world.terrainAt(nx, ny))) {
       this.x = nx; this.y = ny;
     }
   }

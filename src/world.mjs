@@ -64,39 +64,109 @@ export class World {
 
   // ── Terrain ───────────────────────────────────────────────
   _generateTerrain() {
-    const grid = Array.from({ length: WORLD_HEIGHT }, () =>
-      Array(WORLD_WIDTH).fill(TERRAIN.PLAINS)
+    const W = WORLD_WIDTH, H = WORLD_HEIGHT;
+
+    // ── Height field: weighted sum of gaussian "feature peaks" ──
+    // More features = more varied, overlapping = smooth blends
+    const nFeatures = 28;
+    const features = Array.from({ length: nFeatures }, () => ({
+      x:     Math.random() * W,
+      y:     Math.random() * H,
+      value: Math.random(),                  // 0 = basin, 1 = peak
+      r:     8 + Math.random() * (W * 0.22), // influence radius
+    }));
+
+    const hf = Array.from({ length: H }, (_, y) =>
+      Array.from({ length: W }, (__, x) => {
+        let sum = 0, wt = 0;
+        for (const f of features) {
+          const d = Math.hypot(x - f.x, y - f.y);
+          const w = Math.max(0, 1 - d / f.r);
+          sum += f.value * w; wt += w;
+        }
+        return wt > 0 ? sum / wt : 0.5;
+      })
     );
-    for (let w = 0; w < 3; w++) {
-      let x = Math.floor(Math.random() * WORLD_WIDTH);
-      let y = Math.floor(Math.random() * WORLD_HEIGHT);
-      const len = 10 + Math.floor(Math.random() * 18);
-      for (let i = 0; i < len; i++) {
-        x = Math.max(1, Math.min(WORLD_WIDTH - 2,  x + Math.floor(Math.random() * 3) - 1));
-        y = Math.max(1, Math.min(WORLD_HEIGHT - 2, y + Math.floor(Math.random() * 3) - 1));
+
+    // Normalise to [0, 1]
+    let lo = Infinity, hi = -Infinity;
+    for (const row of hf) for (const v of row) { lo = Math.min(lo, v); hi = Math.max(hi, v); }
+    const span = hi - lo || 1;
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) hf[y][x] = (hf[y][x] - lo) / span;
+
+    // ── Primary terrain from height thresholds ───────────────
+    // Low = water, high = mountain, slopes = forest, middle = plains
+    const grid = hf.map(row => row.map(h =>
+      h < 0.22  ? TERRAIN.WATER    :
+      h > 0.82  ? TERRAIN.MOUNTAIN :
+      h < 0.38  ? TERRAIN.FOREST   :   // dense lowland forest hugging water
+      TERRAIN.PLAINS
+    ));
+
+    // ── Inland forest patches (mid-slope scatter) ────────────
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) {
+        if (grid[y][x] === TERRAIN.PLAINS && hf[y][x] > 0.52 && hf[y][x] < 0.70) {
+          if (Math.random() < 0.14) grid[y][x] = TERRAIN.FOREST;
+        }
+      }
+    }
+
+    // ── Mountain foothills: sparse forest on lower slopes ────
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) {
+        if (grid[y][x] === TERRAIN.PLAINS && hf[y][x] > 0.72 && hf[y][x] < 0.82) {
+          if (Math.random() < 0.25) grid[y][x] = TERRAIN.FOREST;
+        }
+      }
+    }
+
+    // ── Rivers: trace downhill paths from mountain edges ─────
+    const nRivers = 2 + Math.floor(Math.random() * 3);
+    for (let r = 0; r < nRivers; r++) {
+      // Find a mountain-adjacent plains/forest cell as river head
+      const starts = [];
+      for (let y = 1; y < H - 1; y++) {
+        for (let x = 1; x < W - 1; x++) {
+          if (grid[y][x] !== TERRAIN.MOUNTAIN && hf[y][x] > 0.60) {
+            const nbrs = [[y-1,x],[y+1,x],[y,x-1],[y,x+1]];
+            if (nbrs.some(([ny, nx]) => grid[ny]?.[nx] === TERRAIN.MOUNTAIN)) {
+              starts.push({ x, y });
+            }
+          }
+        }
+      }
+      if (!starts.length) continue;
+      let { x, y } = starts[Math.floor(Math.random() * starts.length)];
+      for (let step = 0; step < 60; step++) {
+        if (x < 0 || x >= W || y < 0 || y >= H) break;
+        if (grid[y][x] === TERRAIN.WATER) break; // reached a lake
         grid[y][x] = TERRAIN.WATER;
-        if (Math.random() < 0.45 && y + 1 < WORLD_HEIGHT) grid[y+1][x] = TERRAIN.WATER;
-        if (Math.random() < 0.45 && x + 1 < WORLD_WIDTH)  grid[y][x+1] = TERRAIN.WATER;
+        // Step toward lowest neighbour with slight random drift
+        const candidates = [
+          { nx: x,   ny: y+1 }, { nx: x,   ny: y-1 },
+          { nx: x+1, ny: y   }, { nx: x-1, ny: y   },
+        ].filter(c => c.nx >= 0 && c.nx < W && c.ny >= 0 && c.ny < H);
+        candidates.sort((a, b) => hf[a.ny]?.[a.nx] - hf[b.ny]?.[b.nx]);
+        // Pick lowest or occasionally second-lowest (organic bends)
+        const pick = Math.random() < 0.75 ? candidates[0] : (candidates[1] ?? candidates[0]);
+        x = pick.nx; y = pick.ny;
       }
     }
-    for (let m = 0; m < 2; m++) {
-      let x = Math.floor(Math.random() * WORLD_WIDTH);
-      let y = Math.floor(Math.random() * WORLD_HEIGHT);
-      for (let i = 0; i < 7; i++) {
-        x = Math.max(0, Math.min(WORLD_WIDTH-1,  x + Math.floor(Math.random() * 3) - 1));
-        y = Math.max(0, Math.min(WORLD_HEIGHT-1, y + Math.floor(Math.random() * 3) - 1));
-        if (grid[y][x] === TERRAIN.PLAINS) grid[y][x] = TERRAIN.MOUNTAIN;
+
+    // ── Ruins — rare ancient sites on plains only ────────────
+    const nRuins = 4 + Math.floor(Math.random() * 4);
+    let ruinsPlaced = 0, att = 0;
+    while (ruinsPlaced < nRuins && att < 3000) {
+      att++;
+      const x = 3 + Math.floor(Math.random() * (W - 6));
+      const y = 3 + Math.floor(Math.random() * (H - 6));
+      if (grid[y][x] === TERRAIN.PLAINS) {
+        grid[y][x] = TERRAIN.RUINS;
+        ruinsPlaced++;
       }
     }
-    for (let f = 0; f < 5; f++) {
-      let x = Math.floor(Math.random() * WORLD_WIDTH);
-      let y = Math.floor(Math.random() * WORLD_HEIGHT);
-      for (let i = 0; i < 14; i++) {
-        x = Math.max(0, Math.min(WORLD_WIDTH-1,  x + Math.floor(Math.random() * 3) - 1));
-        y = Math.max(0, Math.min(WORLD_HEIGHT-1, y + Math.floor(Math.random() * 3) - 1));
-        if (grid[y][x] === TERRAIN.PLAINS) grid[y][x] = TERRAIN.FOREST;
-      }
-    }
+
     return grid;
   }
 
@@ -107,7 +177,7 @@ export class World {
       const x = Math.floor(Math.random() * WORLD_WIDTH);
       const y = Math.floor(Math.random() * WORLD_HEIGHT);
       const t = this.terrain[y]?.[x];
-      if (t === TERRAIN.PLAINS || t === TERRAIN.FOREST) {
+      if (t === TERRAIN.PLAINS || t === TERRAIN.FOREST || t === TERRAIN.RUINS) {
         const key = `${x},${y}`;
         if (!this.foodNodes.has(key)) {
           this.foodNodes.set(key, { x, y, amount: 5 + Math.floor(Math.random() * 6) });
@@ -156,7 +226,7 @@ export class World {
         const delay = (20000 + Math.random() * 30000) / (this.activeEvent?.type === 'windfall' ? 3 : 1);
         setTimeout(() => {
           const t = this.terrain[y]?.[x];
-          if (t === TERRAIN.PLAINS || t === TERRAIN.FOREST) {
+          if (t === TERRAIN.PLAINS || t === TERRAIN.FOREST || t === TERRAIN.RUINS) {
             this.foodNodes.set(key, { x, y, amount: 4 + Math.floor(Math.random() * 5) });
           }
         }, delay);
@@ -482,7 +552,7 @@ export class World {
   // ── Persistence ───────────────────────────────────────────
   save() {
     const data = {
-      v:           3,
+      v:           4,
       name:        this.name,
       day:         this.day,
       tick:        this.tick,
@@ -512,7 +582,7 @@ export class World {
     if (!existsSync(SAVE_PATH)) return null;
     try {
       const data = JSON.parse(readFileSync(SAVE_PATH, 'utf8'));
-      if (!data.v || data.v < 3) return null; // incompatible — world size changed
+      if (!data.v || data.v < 4) return null; // incompatible — world size / terrain changed
 
       const w = new World(data.name);
       w.day         = data.day;
