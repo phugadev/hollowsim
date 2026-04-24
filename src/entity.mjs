@@ -31,8 +31,10 @@ export class Entity {
     this.state  = 'wandering';
     this.target = null;
 
+    this.parents = [];          // [entityId, entityId] — birth parents
     this.relationships = new Map();
     this.memory        = [];
+    this.heard         = [];    // [{ from, text }] — rumours received via socialising
     this.starvingTicks = 0;
   }
 
@@ -240,8 +242,22 @@ export class Entity {
       this.remember(`formed a deep bond with ${target.name}`);
       target.remember(`formed a deep bond with ${this.name}`);
     }
+
+    // Exchange rumours — each shares their freshest memory with the other
+    this._shareRumour(target);
+    target._shareRumour(this);
+
     this.state = 'wandering'; this.target = null;
     return event;
+  }
+
+  _shareRumour(target) {
+    if (!this.memory.length) return;
+    const text = this.memory[0];
+    if (!target.heard.some(h => h.text === text)) {
+      target.heard.unshift({ from: this.name, text });
+      if (target.heard.length > 8) target.heard.pop();
+    }
   }
 
   _stepRandom(world, range) {

@@ -80,6 +80,12 @@ Nature: ${snap.personality}. Fulfillment: ${snap.fulfillment}/100. Bonds: ${snap
 Write 1-2 sentences describing what ${snap.name} dreams of — symbolic, fragmented, rooted in what they carry. If fulfillment is low, the dream aches. Third person. Literary. No dialogue. Max 40 words.`;
 }
 
+function regretPrompt(snap, regret) {
+  return `In ${snap.worldName}, ${snap.name} (${snap.personality}) has just died at age ${snap.age}. Their unresolved thread: ${regret}.
+
+Write 1 sentence — their final unspoken thought, a wish or grief left behind. Third person. Intimate. No dialogue. Max 20 words.`;
+}
+
 function eulogyPrompt(snap, deathReason) {
   return `Write a 2-sentence eulogy for ${snap.name}, who died of ${deathReason} in ${snap.worldName} on day ${snap.worldDay}.
 
@@ -136,6 +142,10 @@ export async function* observeEntity(world, entity) {
 
 export async function* narrateDream(world, entity) {
   yield* ollamaStream(dreamPrompt(world.getStateSnapshot(entity)), 80);
+}
+
+export async function* narrateRegret(world, entity, regret) {
+  yield* ollamaStream(regretPrompt(world.getStateSnapshot(entity), regret), 45);
 }
 
 export async function* narrateEulogy(world, entity, deathReason) {

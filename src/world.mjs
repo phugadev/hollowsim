@@ -256,6 +256,24 @@ export class World {
     // Wanderer arrivals
     this._tryArrival(events);
 
+    // Grudge evolution — rivalries deepen when near, cool when apart
+    if (this.tick % 10 === 0) {
+      for (const entity of this.aliveEntities()) {
+        for (const [otherId, rel] of entity.relationships) {
+          if (rel.type !== 'rival') continue;
+          const other = this.entities.find(e => e.id === otherId && e.alive);
+          const near  = other && entity.distanceTo(other) <= 3;
+          const delta = near ? +0.006 : -0.002;
+          const next  = Math.max(0, Math.min(1, rel.strength + delta));
+          if (next === 0) {
+            entity.relationships.delete(otherId); // grudge fades to indifference
+          } else {
+            entity.relationships.set(otherId, { type: 'rival', strength: next });
+          }
+        }
+      }
+    }
+
     // Auto-save
     if (this.tick % SAVE_INTERVAL === 0) this.save();
 
@@ -277,8 +295,9 @@ export class World {
         const bonded = relA.type === 'bond' && relA.strength > 0.6;
         if (bonded) continue;
 
-        // Bold A picks fight with rival or stranger
-        if (relA.type === 'rival' || (a.personality.boldness > 0.7 && Math.random() < 0.3)) {
+        // Bold A picks fight, or old grudge boils over (strength > 0.85 triggers even timid souls)
+        const deepGrudge = relA.type === 'rival' && relA.strength > 0.85;
+        if (deepGrudge || relA.type === 'rival' || (a.personality.boldness > 0.7 && Math.random() < 0.3)) {
           const scoreA = a.personality.boldness  * (0.5 + Math.random());
           const scoreB = b.personality.boldness  * (0.5 + Math.random());
           const winner = scoreA >= scoreB ? a : b;
@@ -320,7 +339,8 @@ export class World {
         if (this.terrain[by][bx] === TERRAIN.WATER || this.terrain[by][bx] === TERRAIN.MOUNTAIN) return;
 
         const newborn = new Entity(bx, by);
-        newborn.age = 0; newborn.hunger = 15; newborn.energy = 100;
+        newborn.age     = 0; newborn.hunger = 15; newborn.energy = 100;
+        newborn.parents = [e.id, otherId];
         this.entities.push(newborn);
         this.totalBorn++;
         events.push({ type: 'birth', entity: newborn, parent: e });
@@ -399,6 +419,29 @@ export class World {
     this._placeFoodNodes(6);
   }
 
+  // ── Regret ───────────────────────────────────────────────
+  findRegret(entity) {
+    // Unresolved rivalry
+    for (const [id, r] of entity.relationships) {
+      if (r.type === 'rival' && r.strength > 0.4) {
+        const other = this.entities.find(e => e.id === id);
+        if (other) return `had an unresolved grudge with ${other.name}`;
+      }
+    }
+    // Bond with a soul who died before them
+    for (const [id, r] of entity.relationships) {
+      if (r.type === 'bond' && r.strength > 0.6) {
+        const other = this.entities.find(e => e.id === id);
+        if (other && !other.alive) return `carried grief for ${other.name}, who died first`;
+      }
+    }
+    // Died yearning for more
+    if ((entity.fulfillment ?? 50) < 25) return `died before finding what they were looking for`;
+    // Died young
+    if (entity.age < 25) return `died too young, with much unlived`;
+    return null;
+  }
+
   // ── History ───────────────────────────────────────────────
   addHistory(text) {
     this.history.push({ day: this.day, text });
@@ -456,8 +499,10 @@ export class World {
         age: e.age, hunger: e.hunger, energy: e.energy, mood: e.mood,
         fulfillment: e.fulfillment ?? 50,
         alive: e.alive, personality: e.personality,
+        parents: e.parents ?? [],
         relationships: [...e.relationships.entries()],
-        memory: e.memory, starvingTicks: e.starvingTicks,
+        memory: e.memory, heard: e.heard ?? [],
+        starvingTicks: e.starvingTicks,
       })),
     };
     writeFileSync(SAVE_PATH, JSON.stringify(data));
@@ -491,6 +536,8 @@ export class World {
           memory: d.memory, starvingTicks: d.starvingTicks ?? 0,
         });
         e.fulfillment   = d.fulfillment ?? 50;
+        e.parents       = d.parents ?? [];
+        e.heard         = d.heard   ?? [];
         e.relationships = new Map(d.relationships ?? []);
         return e;
       });

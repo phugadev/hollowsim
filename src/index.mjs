@@ -3,7 +3,7 @@ import readline from 'readline';
 import { World } from './world.mjs';
 import { UI }    from './ui.mjs';
 import {
-  narrateDramatic, observeEntity, narrateDream, narrateEulogy,
+  narrateDramatic, observeEntity, narrateDream, narrateEulogy, narrateRegret,
   narrateConflict, narrateWorldEvent, narrateBond, narrateArrival,
   narrateTalkOpening, narrateTalkReply,
   narrateAsk, narrateIntervention,
@@ -85,14 +85,17 @@ function processEvents(events) {
   for (const ev of events) {
     switch (ev.type) {
 
-      case 'death':
+      case 'death': {
         ui.addLog(`${ev.entity.name} dies — ${ev.reason}.`, 'red');
         ui.addLog(`  revive ${ev.entity.name} within 5 minutes.`, 'yellow');
         world.addHistory(`Day ${world.day}: ${ev.entity.name} died of ${ev.reason}, age ${Math.floor(ev.entity.age)}.`);
         enqueue(narrateEulogy(world, ev.entity, ev.reason), `${ev.entity.name} — `);
+        const regret = world.findRegret(ev.entity);
+        if (regret) enqueue(narrateRegret(world, ev.entity, regret), `${ev.entity.name} — `);
         // Keep dead soul in array until grace window passes so revive can find them
         setTimeout(() => { world.entities = world.entities.filter(e => e !== ev.entity); }, 310000);
         break;
+      }
 
       case 'birth':
         ui.addLog(`${ev.entity.name} enters ${world.name}, born of ${ev.parent.name}.`, 'green');
@@ -370,6 +373,8 @@ ui.onCommand(async cmd => {
     ui.addLog('── observation ─────────────────', 'white');
     ui.addLog('observe <name>    — narrate inner state (or dreams, if sleeping)', 'white');
     ui.addLog('inspect <name>    — full dossier: stats, memory, bonds', 'white');
+    ui.addLog('lineage <name>    — show parents, self, and children', 'white');
+    ui.addLog('rumors <name>     — what a soul has heard from others', 'white');
     ui.addLog('souls             — list all living souls', 'white');
     ui.addLog('ask               — world oracle: what is happening right now', 'white');
     ui.addLog('history           — chronicle of significant events', 'white');
@@ -420,6 +425,53 @@ ui.onCommand(async cmd => {
     const e = world.entities.find(en => en.name.toLowerCase().startsWith(q));
     if (!e) { ui.addLog(`No soul named "${q}" found.`, 'red'); return; }
     doInspect(e); return;
+  }
+
+  // ── Lineage ──────────────────────────────────────────────────
+  if (lower.startsWith('lineage ')) {
+    const q = norm.slice(8).trim().toLowerCase();
+    const e = world.entities.find(en => en.name.toLowerCase().startsWith(q));
+    if (!e) { ui.addLog(`No soul named "${q}" found.`, 'red'); return; }
+
+    const div = '─'.repeat(34);
+    ui.addLog(div, 'white');
+    ui.addLog(`Lineage of ${e.name}`, 'cyan');
+
+    if (e.parents?.length) {
+      for (const pid of e.parents) {
+        const p = world.entities.find(en => en.id === pid);
+        if (!p) continue;
+        const s = p.alive ? `alive, age ${Math.floor(p.age)}` : `died age ${Math.floor(p.age)}`;
+        ui.addLog(`  Parent  ${p.name} (${p.personalityLabel}) — ${s}`, p.alive ? 'white' : 'red');
+      }
+    } else {
+      ui.addLog(`  Wandered in from beyond the world's edge`, 'white');
+    }
+
+    const status = e.alive ? `alive, age ${Math.floor(e.age)}` : `died age ${Math.floor(e.age)}`;
+    ui.addLog(`  ▶ ${e.name} (${e.personalityLabel}) — ${status}`, e.alive ? 'cyan' : 'red');
+
+    const children = world.entities.filter(en => en.parents?.includes(e.id));
+    for (const c of children) {
+      const cs = c.alive ? `alive, age ${Math.floor(c.age)}` : `died age ${Math.floor(c.age)}`;
+      ui.addLog(`  Child   ${c.name} (${c.personalityLabel}) — ${cs}`, c.alive ? 'white' : 'red');
+    }
+
+    ui.addLog(div, 'white');
+    return;
+  }
+
+  // ── Rumors ───────────────────────────────────────────────────
+  if (lower.startsWith('rumors ') || lower.startsWith('rumours ')) {
+    const q = norm.slice(norm.indexOf(' ') + 1).trim().toLowerCase();
+    const e = world.entities.find(en => en.name.toLowerCase().startsWith(q));
+    if (!e) { ui.addLog(`No soul named "${q}" found.`, 'red'); return; }
+
+    const heard = e.heard ?? [];
+    if (!heard.length) { ui.addLog(`${e.name} has heard nothing yet.`, 'white'); return; }
+    ui.addLog(`What ${e.name} has heard:`, 'cyan');
+    for (const r of heard) ui.addLog(`  ${r.from}: "${r.text}"`, 'white');
+    return;
   }
 
   ui.addLog(`Unknown command: "${norm}". Type help.`, 'red');
