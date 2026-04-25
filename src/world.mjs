@@ -477,8 +477,11 @@ export class World {
       if (comp.size < 3) continue;
 
       // Which existing factions have members in this component?
+      // Filter to only valid factions — stale factionIds (e.g. from revived souls) must be excluded.
       const existing = new Set(
-        [...comp].map(id => this.entities.find(e => e.id === id)?.factionId).filter(Boolean)
+        [...comp]
+          .map(id => this.entities.find(e => e.id === id)?.factionId)
+          .filter(fid => fid && this.factions.has(fid))
       );
 
       let faction;
