@@ -6,10 +6,11 @@ import {
   narrateDramatic, observeEntity, narrateDream, narrateEulogy, narrateRegret,
   narrateConflict, narrateWorldEvent, narrateBond, narrateArrival,
   narrateTalkOpening, narrateTalkReply,
-  narrateAsk, narrateIntervention,
+  narrateAsk, narrateIntervention, narrateAmbition, narrateFactionFormed,
   shouldNarrate, dramaticEventLabel,
   setModel, getModel,
 } from './narrator.mjs';
+import { AMBITION_DESC } from './world.mjs';
 import { TICK_MS } from './config.mjs';
 
 // ── First-run world name prompt ───────────────────────────────
@@ -111,9 +112,33 @@ function processEvents(events) {
         break;
       }
 
-      case 'conflict':
-        world.addHistory(`Day ${world.day}: ${ev.winner.name} prevailed over ${ev.loser.name}.`);
+      case 'conflict': {
+        const fTag = ev.interFaction
+          ? ` [${ev.winnerFaction.name} vs ${ev.loserFaction.name}]`
+          : '';
+        ui.addLog(`${ev.winner.name} prevailed over ${ev.loser.name}.${fTag}`, ev.interFaction ? 'red' : 'white');
+        world.addHistory(`Day ${world.day}: ${ev.winner.name} prevailed over ${ev.loser.name}.${fTag}`);
         enqueue(narrateConflict(world, ev.winner, ev.loser), '');
+        break;
+      }
+
+      case 'faction_formed': {
+        const members = [...ev.faction.memberIds]
+          .map(id => world.entities.find(e => e.id === id))
+          .filter(Boolean);
+        ui.addLog(`${ev.faction.name} has formed (${members.length} souls).`, 'cyan');
+        enqueue(narrateFactionFormed(world, ev.faction, members), `${ev.faction.name} — `);
+        break;
+      }
+
+      case 'faction_dissolved':
+        ui.addLog(`${ev.faction.name} has dissolved.`, 'yellow');
+        world.addHistory(`Day ${world.day}: ${ev.faction.name} dissolved.`);
+        break;
+
+      case 'teaching':
+        if (Math.random() < 0.3)
+          ui.addLog(`${ev.teacher.name} teaches ${ev.student.name}: "${ev.lesson}".`, 'white');
         break;
 
       case 'season_change': {
@@ -148,6 +173,14 @@ function processEvents(events) {
         ui.addLog(`${ev.entity.name} ${ev.label}.`, 'white');
         break;
 
+      case 'ambition_fulfilled': {
+        const desc = AMBITION_DESC[ev.entity.ambition] ?? ev.entity.ambition;
+        ui.addLog(`${ev.entity.name} fulfills their ambition — to ${desc}.`, 'cyan');
+        enqueue(narrateAmbition(world, ev.entity), `${ev.entity.name} — `);
+        world.addHistory(`Day ${world.day}: ${ev.entity.name} fulfilled their ambition — to ${desc}.`);
+        break;
+      }
+
       case 'ate':
         if (Math.random() < 0.04) ui.addLog(`${ev.entity.name} finds sustenance.`, 'white');
         break;
@@ -169,9 +202,23 @@ function doInspect(entity) {
   const e   = entity;
   const div = '─'.repeat(32);
   ui.addLog(div, 'white');
-  ui.addLog(`${e.name}  ·  age ${Math.floor(e.age)}  ·  ${e.personalityLabel}`, 'cyan');
+  ui.addLog(`${e.name}  ·  age ${Math.floor(e.age)}  ·  ${e.lifeStage}  ·  ${e.personalityLabel}`, 'cyan');
   ui.addLog(`state: ${e.stateLabel}  mood: ${e.moodLabel}  drama: ${e.dramaticScore}`, 'white');
   ui.addLog(`hunger: ${Math.floor(e.hunger)}/100   energy: ${Math.floor(e.energy)}/100`, 'white');
+
+  if (e.ambition) {
+    const status = e.ambitionFulfilled ? '✓ fulfilled' : 'in pursuit';
+    ui.addLog(`ambition [${status}]: to ${AMBITION_DESC[e.ambition] ?? e.ambition}`, e.ambitionFulfilled ? 'green' : 'yellow');
+  }
+
+  const faction = world.getFactionOf(e);
+  if (faction) {
+    const others = [...faction.memberIds]
+      .filter(id => id !== e.id)
+      .map(id => world.entities.find(x => x.id === id && x.alive)?.name)
+      .filter(Boolean);
+    ui.addLog(`faction: ${faction.name}  (with ${others.join(', ') || 'none'})`, 'cyan');
+  }
 
   const rels = [...e.relationships.entries()];
   if (rels.length) {
@@ -375,7 +422,8 @@ ui.onCommand(async cmd => {
     ui.addLog('inspect <name>    — full dossier: stats, memory, bonds', 'white');
     ui.addLog('lineage <name>    — show parents, self, and children', 'white');
     ui.addLog('rumors <name>     — what a soul has heard from others', 'white');
-    ui.addLog('souls             — list all living souls', 'white');
+    ui.addLog('souls             — list all living souls (with faction)', 'white');
+    ui.addLog('factions          — list all factions and inter-faction tension', 'white');
     ui.addLog('ask               — world oracle: what is happening right now', 'white');
     ui.addLog('history           — chronicle of significant events', 'white');
     ui.addLog('── conversation ────────────────', 'white');
@@ -408,8 +456,36 @@ ui.onCommand(async cmd => {
   if (lower === 'souls' || lower === 'list') {
     const alive = world.aliveEntities();
     ui.addLog(`Living souls (${alive.length}):`, 'white');
-    for (const e of alive)
-      ui.addLog(`  ${e.name} — ${e.personalityLabel} — age ${Math.floor(e.age)} — ${e.stateLabel}`, 'white');
+    for (const e of alive) {
+      const fName = world.getFactionOf(e)?.name ?? '';
+      const fTag  = fName ? ` [${fName}]` : '';
+      ui.addLog(`  ${e.name} — ${e.personalityLabel} — age ${Math.floor(e.age)} — ${e.stateLabel}${fTag}`, 'white');
+    }
+    return;
+  }
+
+  if (lower === 'factions') {
+    const fList = [...world.factions.values()];
+    if (!fList.length) { ui.addLog('No factions have formed yet.', 'white'); return; }
+    const div = '─'.repeat(34);
+    ui.addLog(div, 'white');
+    for (const f of fList) {
+      const members = [...f.memberIds]
+        .map(id => world.entities.find(e => e.id === id && e.alive))
+        .filter(Boolean);
+      ui.addLog(`${f.name}  (${members.length} members, since day ${f.foundedDay})`, 'cyan');
+      ui.addLog(`  ${members.map(e => e.name).join(' · ')}`, 'white');
+
+      // Tension with other factions
+      for (const other of fList) {
+        if (other.id === f.id) continue;
+        const t = world.factionTension(f, other);
+        if (t <= 0) continue;
+        const label = t < 0.3 ? 'low' : t < 0.7 ? 'moderate' : t < 1.2 ? 'high' : 'volatile';
+        ui.addLog(`  tension with ${other.name}: ${label}`, t >= 0.7 ? 'red' : 'yellow');
+      }
+    }
+    ui.addLog(div, 'white');
     return;
   }
 

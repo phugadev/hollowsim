@@ -5,9 +5,11 @@ import {
   SAVE_INTERVAL, WORLD_EVENT_CHANCE,
 } from './config.mjs';
 import { Entity } from './entity.mjs';
-import { generateWorldName } from './names.mjs';
+import { generateWorldName, generateFactionName } from './names.mjs';
 
 const SAVE_PATH = './world.json';
+
+function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
 
 // ── Season modifiers ─────────────────────────────────────────
 const SEASON_HUNGER = { spring: 0.75, summer: 1.0, autumn: 1.25, winter: 1.65 };
@@ -16,6 +18,17 @@ const SEASON_BIRTH  = { spring: 4,    summer: 1,   autumn: 0.4,  winter: 0    };
 // ── World events ─────────────────────────────────────────────
 const EVENT_POOL = ['drought', 'windfall', 'storm', 'plague'];
 const EVENT_DURATION = { drought: 15, windfall: 8, storm: 6, plague: 10 }; // in days
+
+// ── Ambitions ─────────────────────────────────────────────────
+const AMBITIONS = ['bond', 'elder', 'explore', 'parent', 'ruins'];
+export const AMBITION_DESC = {
+  bond:    'forge a bond that endures',
+  elder:   'live to see old age',
+  explore: 'find wonder five times',
+  parent:  'bring new life into the world',
+  ruins:   'stand where the ancients stood',
+};
+function randomAmbition() { return AMBITIONS[Math.floor(Math.random() * AMBITIONS.length)]; }
 
 export class World {
   constructor(name = null) {
@@ -36,6 +49,9 @@ export class World {
 
     // Chronicle — last 40 significant events, persisted
     this.history = [];
+
+    // Factions — named social clusters
+    this.factions = new Map(); // id → { id, name, memberIds: Set<string>, foundedDay }
 
     this.terrain   = this._generateTerrain();
     this.foodNodes = new Map();
@@ -195,7 +211,9 @@ export class World {
         y = Math.floor(Math.random() * WORLD_HEIGHT);
         a++;
       } while ((this.terrain[y][x] === TERRAIN.WATER || this.terrain[y][x] === TERRAIN.MOUNTAIN) && a < 500);
-      this.entities.push(new Entity(x, y));
+      const e = new Entity(x, y);
+      e.ambition = randomAmbition();
+      this.entities.push(e);
     }
   }
 
@@ -326,6 +344,25 @@ export class World {
     // Wanderer arrivals
     this._tryArrival(events);
 
+    // Faction updates (every 50 ticks)
+    if (this.tick % 50 === 0) this._updateFactions(events);
+
+    // Ambition checks + elder wisdom aura
+    for (const entity of this.aliveEntities()) {
+      if (!entity.ambitionFulfilled && entity.ambition && this._checkAmbition(entity)) {
+        entity.ambitionFulfilled = true;
+        entity.fulfillment = clamp(entity.fulfillment + 30, 0, 100);
+        entity.mood        = clamp(entity.mood + 15, 0, 100);
+        entity.remember(`fulfilled: ${AMBITION_DESC[entity.ambition]}`);
+        events.push({ type: 'ambition_fulfilled', entity });
+      }
+      if (entity.lifeStage === 'elder' && Math.random() < 0.25) {
+        for (const other of this.entitiesNear(entity, 3)) {
+          other.mood = clamp(other.mood + 0.4, 0, 100);
+        }
+      }
+    }
+
     // Grudge evolution — rivalries deepen when near, cool when apart
     if (this.tick % 10 === 0) {
       for (const entity of this.aliveEntities()) {
@@ -385,11 +422,131 @@ export class World {
           winner.remember(`prevailed over ${loser.name}`);
           loser.remember(`was beaten by ${winner.name}`);
 
-          events.push({ type: 'conflict', winner, loser });
+          const winnerFaction = this.getFactionOf(winner);
+          const loserFaction  = this.getFactionOf(loser);
+          const interFaction  = winnerFaction && loserFaction && winnerFaction.id !== loserFaction.id;
+          events.push({ type: 'conflict', winner, loser, winnerFaction, loserFaction, interFaction });
           return; // one conflict per update
         }
       }
     }
+  }
+
+  // ── Factions ──────────────────────────────────────────────
+  getFactionOf(entity) {
+    if (!entity.factionId) return null;
+    return this.factions.get(entity.factionId) ?? null;
+  }
+
+  _updateFactions(events) {
+    const alive = this.aliveEntities();
+
+    // Build bond adjacency (mutual bond > 0.5 both ways)
+    const adj = new Map();
+    for (const e of alive) {
+      for (const [otherId, rel] of e.relationships) {
+        if (rel.type !== 'bond' || rel.strength < 0.5) continue;
+        const other = this.entities.find(x => x.id === otherId && x.alive);
+        if (!other) continue;
+        const back = other.getRel(e.id);
+        if (back.type !== 'bond' || back.strength < 0.5) continue;
+        if (!adj.has(e.id)) adj.set(e.id, new Set());
+        adj.get(e.id).add(otherId);
+      }
+    }
+
+    // Connected components
+    const visited = new Set();
+    const components = []; // Array of Set<entityId>
+    for (const e of alive) {
+      if (visited.has(e.id)) continue;
+      const comp = new Set();
+      const stack = [e.id];
+      while (stack.length) {
+        const id = stack.pop();
+        if (visited.has(id)) continue;
+        visited.add(id); comp.add(id);
+        for (const nid of (adj.get(id) ?? [])) stack.push(nid);
+      }
+      components.push(comp);
+    }
+
+    // For each component of size >= 3: find or create a faction
+    const activeFactionIds = new Set();
+    for (const comp of components) {
+      if (comp.size < 3) continue;
+
+      // Which existing factions have members in this component?
+      const existing = new Set(
+        [...comp].map(id => this.entities.find(e => e.id === id)?.factionId).filter(Boolean)
+      );
+
+      let faction;
+      if (existing.size === 0) {
+        // New faction
+        const id = Math.random().toString(36).slice(2, 9);
+        faction = { id, name: generateFactionName(), memberIds: new Set(), foundedDay: this.day };
+        this.factions.set(id, faction);
+        events.push({ type: 'faction_formed', faction });
+        this.addHistory(`Day ${this.day}: ${faction.name} formed.`);
+      } else {
+        // Use largest existing faction; absorb others into it
+        let largest = null;
+        for (const fid of existing) {
+          const f = this.factions.get(fid);
+          if (!largest || f.memberIds.size > largest.memberIds.size) largest = f;
+        }
+        faction = largest;
+        for (const fid of existing) {
+          if (fid !== faction.id) this.factions.delete(fid); // absorbed
+        }
+      }
+
+      // Update membership
+      faction.memberIds = comp;
+      activeFactionIds.add(faction.id);
+      for (const id of comp) {
+        const e = this.entities.find(x => x.id === id);
+        if (e) e.factionId = faction.id;
+      }
+    }
+
+    // Clear faction from souls not in any active faction
+    for (const e of alive) {
+      if (e.factionId && !activeFactionIds.has(e.factionId)) {
+        e.factionId = null;
+      }
+    }
+
+    // Remove factions with no living members
+    for (const [fid, faction] of this.factions) {
+      const living = [...faction.memberIds].filter(id => alive.some(e => e.id === id));
+      if (living.length === 0) {
+        this.factions.delete(fid);
+      } else if (living.length < 3) {
+        // Dissolved — not enough members
+        for (const id of living) {
+          const e = this.entities.find(x => x.id === id);
+          if (e) e.factionId = null;
+        }
+        events.push({ type: 'faction_dissolved', faction });
+        this.factions.delete(fid);
+      }
+    }
+  }
+
+  // Tension between two factions: sum of rival strengths across member pairs
+  factionTension(fA, fB) {
+    let t = 0;
+    for (const aid of fA.memberIds) {
+      const a = this.entities.find(e => e.id === aid && e.alive);
+      if (!a) continue;
+      for (const bid of fB.memberIds) {
+        const r = a.getRel(bid);
+        if (r.type === 'rival') t += r.strength;
+      }
+    }
+    return t;
   }
 
   // ── Birth ─────────────────────────────────────────────────
@@ -411,6 +568,17 @@ export class World {
         const newborn = new Entity(bx, by);
         newborn.age     = 0; newborn.hunger = 15; newborn.energy = 100;
         newborn.parents = [e.id, otherId];
+
+        // Inherit blended personality with mutation
+        const p1 = e.personality, p2 = other.personality;
+        const mutate = v => clamp(v + (Math.random() * 0.24 - 0.12), 0, 1);
+        newborn.personality = {
+          boldness:  mutate((p1.boldness  + p2.boldness)  / 2),
+          empathy:   mutate((p1.empathy   + p2.empathy)   / 2),
+          curiosity: mutate((p1.curiosity + p2.curiosity) / 2),
+        };
+
+        newborn.ambition = randomAmbition();
         this.entities.push(newborn);
         this.totalBorn++;
         events.push({ type: 'birth', entity: newborn, parent: e });
@@ -437,9 +605,10 @@ export class World {
     if (!tile) return;
 
     const wanderer = new Entity(tile.x, tile.y);
-    wanderer.age    = Math.floor(Math.random() * 30); // arrives with some history
-    wanderer.hunger = 30 + Math.random() * 30;        // a little hungry from the journey
-    wanderer.energy = 50 + Math.random() * 40;
+    wanderer.age       = Math.floor(Math.random() * 30); // arrives with some history
+    wanderer.hunger    = 30 + Math.random() * 30;        // a little hungry from the journey
+    wanderer.energy    = 50 + Math.random() * 40;
+    wanderer.ambition  = randomAmbition();
     this.entities.push(wanderer);
     this.totalBorn++;
 
@@ -489,8 +658,24 @@ export class World {
     this._placeFoodNodes(6);
   }
 
+  // ── Ambition ──────────────────────────────────────────────
+  _checkAmbition(entity) {
+    switch (entity.ambition) {
+      case 'bond':    return [...entity.relationships.values()].some(r => r.type === 'bond' && r.strength >= 0.88);
+      case 'elder':   return entity.age >= 80;
+      case 'explore': return entity.discoveryCount >= 5;
+      case 'parent':  return this.entities.some(c => c.parents?.includes(entity.id));
+      case 'ruins':   return entity.visitedRuins;
+      default:        return false;
+    }
+  }
+
   // ── Regret ───────────────────────────────────────────────
   findRegret(entity) {
+    // Unfulfilled ambition — most personal regret
+    if (entity.ambition && !entity.ambitionFulfilled) {
+      return `never got to ${AMBITION_DESC[entity.ambition]}`;
+    }
     // Unresolved rivalry
     for (const [id, r] of entity.relationships) {
       if (r.type === 'rival' && r.strength > 0.4) {
@@ -537,12 +722,23 @@ export class World {
         return e ? `${e.name} (${(r.strength*100).toFixed(0)}%)` : null;
       }).filter(Boolean);
 
+    const ambitionText = entity.ambition
+      ? (entity.ambitionFulfilled
+          ? `fulfilled: ${AMBITION_DESC[entity.ambition]}`
+          : `seeks to ${AMBITION_DESC[entity.ambition]}`)
+      : null;
+
+    const faction = this.getFactionOf(entity);
+
     return {
       worldName: this.name, worldDay: this.day, worldTime: this.time, worldSeason: this.season,
       name: entity.name, age: Math.floor(entity.age), state: entity.stateLabel,
+      lifeStage: entity.lifeStage,
+      faction: faction?.name ?? null,
       hunger: Math.floor(entity.hunger), energy: Math.floor(entity.energy),
       fulfillment: Math.floor(entity.fulfillment ?? 50),
       mood: entity.moodLabel, personality: entity.personalityLabel,
+      ambition: ambitionText,
       nearby: nearby.join(', ') || 'none',
       bonds:  bonds.join(', ')  || 'none',
       memory: entity.memory.slice(0, 3).join('; ') || 'nothing notable',
@@ -564,6 +760,10 @@ export class World {
       history:     this.history,
       terrain:     this.terrain.map(r => r.join('')).join('|'),
       foodNodes:   [...this.foodNodes.entries()].map(([k, v]) => ({ k, ...v })),
+      factions:    [...this.factions.values()].map(f => ({
+        id: f.id, name: f.name, foundedDay: f.foundedDay,
+        memberIds: [...f.memberIds],
+      })),
       entities:    this.entities.map(e => ({
         id: e.id, name: e.name, x: e.x, y: e.y, color: e.color,
         age: e.age, hunger: e.hunger, energy: e.energy, mood: e.mood,
@@ -573,6 +773,11 @@ export class World {
         relationships: [...e.relationships.entries()],
         memory: e.memory, heard: e.heard ?? [],
         starvingTicks: e.starvingTicks,
+        ambition: e.ambition ?? null,
+        ambitionFulfilled: e.ambitionFulfilled ?? false,
+        discoveryCount: e.discoveryCount ?? 0,
+        visitedRuins: e.visitedRuins ?? false,
+        factionId: e.factionId ?? null,
       })),
     };
     writeFileSync(SAVE_PATH, JSON.stringify(data));
@@ -594,6 +799,11 @@ export class World {
       w.activeEvent = data.activeEvent ?? null;
       w.history     = data.history     ?? [];
 
+      w.factions = new Map((data.factions ?? []).map(f => [
+        f.id,
+        { id: f.id, name: f.name, foundedDay: f.foundedDay, memberIds: new Set(f.memberIds) },
+      ]));
+
       w.terrain = data.terrain.split('|').map(row => row.split(''));
       w.foodNodes = new Map(data.foodNodes.map(n => [n.k, { x: n.x, y: n.y, amount: n.amount }]));
 
@@ -605,10 +815,15 @@ export class World {
           mood: d.mood, alive: d.alive, personality: d.personality,
           memory: d.memory, starvingTicks: d.starvingTicks ?? 0,
         });
-        e.fulfillment   = d.fulfillment ?? 50;
-        e.parents       = d.parents ?? [];
-        e.heard         = d.heard   ?? [];
-        e.relationships = new Map(d.relationships ?? []);
+        e.fulfillment       = d.fulfillment ?? 50;
+        e.parents           = d.parents ?? [];
+        e.heard             = d.heard   ?? [];
+        e.relationships     = new Map(d.relationships ?? []);
+        e.ambition          = d.ambition          ?? randomAmbition();
+        e.ambitionFulfilled = d.ambitionFulfilled  ?? false;
+        e.discoveryCount    = d.discoveryCount     ?? 0;
+        e.visitedRuins      = d.visitedRuins       ?? false;
+        e.factionId         = d.factionId          ?? null;
         return e;
       });
 

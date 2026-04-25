@@ -27,3 +27,12 @@ export function generateWorldName() {
   const b = WORLD_PARTS[1][Math.floor(Math.random() * WORLD_PARTS[1].length)];
   return a + b;
 }
+
+const FACTION_ADJ  = ['Amber','Stone','Ash','Iron','Ember','Thorn','Pale','Silver','Briar','Dusk','Hollow','Grey','Moss','Cinder','Reed'];
+const FACTION_NOUN = ['Circle','Lodge','House','Kin','Order','Hold','Root','Watch','Fold','Rest','Walk','Band'];
+
+export function generateFactionName() {
+  const adj  = FACTION_ADJ [Math.floor(Math.random() * FACTION_ADJ.length)];
+  const noun = FACTION_NOUN[Math.floor(Math.random() * FACTION_NOUN.length)];
+  return `${adj} ${noun}`;
+}

@@ -65,19 +65,22 @@ Write 1-2 sentences of evocative literary narration. Third person. No dialogue. 
 }
 
 function observePrompt(snap) {
+  const ambitionLine = snap.ambition ? `\nAmbition: ${snap.ambition}.` : '';
+  const factionLine  = snap.faction  ? ` Faction: ${snap.faction}.`   : '';
   return `Voice of a world called ${snap.worldName}. Day ${snap.worldDay}, ${snap.worldTime}, ${snap.worldSeason}.
 
-${snap.name}, age ${snap.age}: ${snap.state}. Hunger ${snap.hunger}/100. Energy ${snap.energy}/100. Fulfillment ${snap.fulfillment}/100. Mood: ${snap.mood}. Nature: ${snap.personality}. Nearby: ${snap.nearby}. Bonds: ${snap.bonds}. Memories: ${snap.memory}.
+${snap.name}, age ${snap.age} (${snap.lifeStage}): ${snap.state}. Hunger ${snap.hunger}/100. Energy ${snap.energy}/100. Fulfillment ${snap.fulfillment}/100. Mood: ${snap.mood}. Nature: ${snap.personality}.${factionLine} Nearby: ${snap.nearby}. Bonds: ${snap.bonds}. Memories: ${snap.memory}.${ambitionLine}
 
-Write 2-3 sentences about their inner state — what they feel, want, or fear. If fulfillment is low, let longing or restlessness show. Third person. Literary. Max 60 words.`;
+Write 2-3 sentences about their inner state — what they feel, want, or fear. If fulfillment is low, let longing or restlessness show. Let their life stage colour the prose (youth: restless; elder: contemplative). Third person. Literary. Max 60 words.`;
 }
 
 function dreamPrompt(snap) {
+  const ambitionLine = snap.ambition ? ` Ambition: ${snap.ambition}.` : '';
   return `Voice of a world called ${snap.worldName}. ${snap.name} is sleeping. Day ${snap.worldDay}, ${snap.worldSeason}.
 
-Nature: ${snap.personality}. Fulfillment: ${snap.fulfillment}/100. Bonds: ${snap.bonds || 'none'}. Last memories: ${snap.memory || 'nothing notable'}.
+Nature: ${snap.personality}. Life stage: ${snap.lifeStage}. Fulfillment: ${snap.fulfillment}/100. Bonds: ${snap.bonds || 'none'}. Last memories: ${snap.memory || 'nothing notable'}.${ambitionLine}
 
-Write 1-2 sentences describing what ${snap.name} dreams of — symbolic, fragmented, rooted in what they carry. If fulfillment is low, the dream aches. Third person. Literary. No dialogue. Max 40 words.`;
+Write 1-2 sentences describing what ${snap.name} dreams of — symbolic, fragmented, rooted in what they carry. If fulfillment is low, the dream aches. An elder's dreams look backward; a youth's look forward. Third person. Literary. No dialogue. Max 40 words.`;
 }
 
 function regretPrompt(snap, regret) {
@@ -92,6 +95,20 @@ function eulogyPrompt(snap, deathReason) {
 They lived ${snap.age} seasons. Nature: ${snap.personality}. Bonds: ${snap.bonds}. Last memories: ${snap.memory}.
 
 Be literary and final. Third person. No dialogue. Max 35 words.`;
+}
+
+function factionFormedPrompt(worldName, worldDay, factionName, members) {
+  return `In ${worldName}, day ${worldDay}, a new group has formed: the ${factionName}.
+
+Members: ${members.map(e => `${e.name} (${e.personalityLabel})`).join(', ')}.
+
+Write 1 sentence announcing their formation — what draws them together, what they might become. Evocative. No dialogue. Max 20 words.`;
+}
+
+function ambitionPrompt(snap) {
+  return `In ${snap.worldName}, day ${snap.worldDay}, ${snap.name} (${snap.personality}, ${snap.lifeStage}) has just fulfilled their life's ambition: to ${snap.ambition}.
+
+Write 1 sentence of quiet, earned satisfaction — what this moment feels like for them. Third person. No dialogue. Max 20 words.`;
 }
 
 function conflictPrompt(worldName, worldDay, winner, loser) {
@@ -153,6 +170,14 @@ export async function* narrateEulogy(world, entity, deathReason) {
   yield* ollamaStream(eulogyPrompt(snap, deathReason), 70);
 }
 
+export async function* narrateFactionFormed(world, faction, members) {
+  yield* ollamaStream(factionFormedPrompt(world.name, world.day, faction.name, members), 45);
+}
+
+export async function* narrateAmbition(world, entity) {
+  yield* ollamaStream(ambitionPrompt(world.getStateSnapshot(entity)), 45);
+}
+
 export async function* narrateConflict(world, winner, loser) {
   yield* ollamaStream(conflictPrompt(world.name, world.day, winner, loser), 50);
 }
@@ -172,12 +197,14 @@ export async function* narrateBond(world, entityA, entityB) {
 // ── Talk: soul responds to player ────────────────────────────
 function soulSystemPrompt(world, entity) {
   const snap = world.getStateSnapshot(entity);
+  const ambitionLine = snap.ambition ? `\nAmbition: ${snap.ambition}.` : '';
+  const factionLine  = snap.faction  ? `\nFaction: ${snap.faction}.`   : '';
   return `You are ${snap.name}, a soul wandering the world of ${snap.worldName}.
 
-Your nature: ${snap.personality}.
+Your nature: ${snap.personality}. Life stage: ${snap.lifeStage}.
 Right now: ${snap.state}. Hunger: ${snap.hunger}/100. Energy: ${snap.energy}/100. Fulfillment: ${snap.fulfillment}/100. Mood: ${snap.mood}.
 Bonds: ${snap.bonds || 'none'}.
-Memories: ${snap.memory || 'nothing notable'}.
+Memories: ${snap.memory || 'nothing notable'}.${ambitionLine}${factionLine}
 It is ${snap.worldTime}, ${snap.worldSeason}, day ${snap.worldDay}.
 
 A divine presence — the watcher of this world — speaks to you directly.

@@ -40,6 +40,8 @@ The simulation runs as a pure code engine — no AI involved in the core loop. O
 |---|---|
 | A soul nears starvation or death | 1-2 sentence dramatic narration |
 | A soul dies | Eulogy based on their life |
+| A soul fulfills their life ambition | Moment of quiet triumph |
+| A faction forms | Origin story |
 | Two souls fight | Conflict scene |
 | A world event begins (drought, plague…) | Opening line |
 | Two souls form a deep bond | Bond story |
@@ -61,8 +63,11 @@ Press `:` or `/` to enter a command.
 | Command | Description |
 |---|---|
 | `observe <name>` | Narrate a soul's inner state (dream if sleeping) |
-| `inspect <name>` | Full dossier: stats, relationships, memory |
-| `souls` | List all living souls |
+| `inspect <name>` | Full dossier: stats, relationships, ambition, faction, memory |
+| `lineage <name>` | Show parents, self, and children |
+| `rumors <name>` | What a soul has heard from others |
+| `souls` | List all living souls with faction membership |
+| `factions` | List all factions and tension between them |
 | `ask` | World oracle — Ollama narrates what's happening right now |
 | `history` | Chronicle of significant events since the world began |
 
@@ -80,6 +85,7 @@ Press `:` or `/` to enter a command.
 | `feed <name>` | Deliver sustenance to a starving soul |
 | `calm <name>` | Bring peace — boosts mood, clears rivalries |
 | `smite <name>` | Divine judgment |
+| `revive <name>` | Pull a soul back from death (within 5 minutes) |
 
 **World**
 
@@ -101,8 +107,8 @@ Edit `src/config.mjs` to change world size, simulation speed, season length, or 
 
 ```js
 export const OLLAMA_MODEL = 'llama3.2'; // swap to 'gemma4' for richer narration
-export const WORLD_WIDTH  = 50;
-export const WORLD_HEIGHT = 20;
+export const WORLD_WIDTH  = 130;
+export const WORLD_HEIGHT = 36;
 export const SEASON_LENGTH = 20;        // days per season
 ```
 
@@ -112,15 +118,25 @@ The world state is saved to `world.json` in the project root (gitignored). Delet
 
 ## World mechanics
 
-**Souls** have hunger, energy, mood, and three personality traits — boldness, empathy, curiosity — that drive their behaviour. They wander, seek food, sleep, socialise, and form rivalries.
+**Souls** have hunger, energy, mood, fulfillment, and three personality traits — boldness, empathy, curiosity — that shape their behaviour. They wander, seek food, sleep, socialise, form rivalries, and carry memories.
+
+**Life stages** — youth (0–20), adult (20–80), elder (80+) — change how souls move and interact. Elders wander slowly but emit a passive wisdom aura that lifts the mood of nearby souls. Elders can also pass memories to younger souls during socialisation.
+
+**Ambitions** — every soul is born with a life goal: forge a deep bond, survive to old age, make five discoveries, have a child, or stand in ancient ruins. Fulfilling an ambition spikes fulfillment and is narrated. Dying with one unfulfilled becomes their regret.
+
+**Trait inheritance** — newborns blend their parents' personality traits with small mutations, creating family character lines over generations.
+
+**Factions** — when three or more souls form a dense web of bonds, they coalesce into a named faction (*Amber Order*, *Stone Kin*, etc.). Factions merge when members bond across groups, and dissolve when membership falls too low. Inter-faction conflicts are flagged in the feed. Use `factions` to see current groups and tension levels.
 
 **Seasons** cycle every 20 days. Winter raises hunger rates and stops births. Spring drops hunger and accelerates bonding.
 
 **World events** — drought, windfall, storm, plague — trigger randomly and reshape conditions for several days.
 
-**Conflict** breaks out when bold souls encounter rivals. Winners and losers are tracked in memory and relationships.
+**Conflict** breaks out when bold souls encounter rivals. Winners and losers are tracked in memory and relationships. Deep grudges can trigger fights even in timid souls.
 
 **Births** happen when two deeply bonded souls are near each other, weighted by season.
+
+**Rumours** spread through the social network — souls share their freshest memory when they socialise, carrying news (and gossip) across the world.
 
 ---
 

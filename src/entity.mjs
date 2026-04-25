@@ -38,6 +38,14 @@ export class Entity {
     this.memory        = [];
     this.heard         = [];    // [{ from, text }] — rumours received via socialising
     this.starvingTicks = 0;
+
+    // Deeper soul
+    this.ambition          = null;   // assigned by world at birth/arrival
+    this.ambitionFulfilled = false;
+    this.discoveryCount    = 0;
+    this.visitedRuins      = false;
+
+    this.factionId = null;           // assigned by world._updateFactions
   }
 
   remember(msg) {
@@ -55,6 +63,12 @@ export class Entity {
 
   distanceTo(other) {
     return Math.abs(this.x - other.x) + Math.abs(this.y - other.y);
+  }
+
+  get lifeStage() {
+    if (this.age < 20) return 'youth';
+    if (this.age < 80) return 'adult';
+    return 'elder';
   }
 
   get displayChar() { return this.name[0]; }
@@ -204,22 +218,31 @@ export class Entity {
   ];
 
   doWander(world) {
-    const range = world.activeEvent?.type === 'storm' ? 0
-                : (Math.ceil(this.personality.curiosity * 2) + 1);
+    const baseRange = this.lifeStage === 'elder' ? 1
+                    : this.lifeStage === 'youth'  ? Math.ceil(this.personality.curiosity * 3) + 2
+                    :                               Math.ceil(this.personality.curiosity * 2) + 1;
+    const range = world.activeEvent?.type === 'storm' ? 0 : baseRange;
     this._stepRandom(world, range);
 
     // Ruins carry their own discovery chance — stronger than open plains
-    if (world.terrainAt(this.x, this.y) === TERRAIN.RUINS && Math.random() < 0.035) {
-      const label = Entity.RUIN_DISCOVERIES[Math.floor(Math.random() * Entity.RUIN_DISCOVERIES.length)];
-      this.fulfillment = clamp(this.fulfillment + 14, 0, 100);
-      this.remember(label);
-      return { type: 'discovery', entity: this, label };
+    if (world.terrainAt(this.x, this.y) === TERRAIN.RUINS) {
+      this.visitedRuins = true;
+      if (Math.random() < 0.035) {
+        const label = Entity.RUIN_DISCOVERIES[Math.floor(Math.random() * Entity.RUIN_DISCOVERIES.length)];
+        const bonus  = this.lifeStage === 'youth' ? 19 : 14;
+        this.fulfillment = clamp(this.fulfillment + bonus, 0, 100);
+        this.discoveryCount++;
+        this.remember(label);
+        return { type: 'discovery', entity: this, label };
+      }
     }
 
     // General curious discovery while wandering
     if (Math.random() < 0.003 * (0.5 + this.personality.curiosity)) {
       const label = Entity.DISCOVERIES[Math.floor(Math.random() * Entity.DISCOVERIES.length)];
-      this.fulfillment = clamp(this.fulfillment + 12, 0, 100);
+      const bonus  = this.lifeStage === 'youth' ? 17 : 12;
+      this.fulfillment = clamp(this.fulfillment + bonus, 0, 100);
+      this.discoveryCount++;
       this.remember(label);
       return { type: 'discovery', entity: this, label };
     }
@@ -268,6 +291,19 @@ export class Entity {
     // Exchange rumours — each shares their freshest memory with the other
     this._shareRumour(target);
     target._shareRumour(this);
+
+    // Teaching — elders may pass a memory to younger souls
+    const teacher  = this.lifeStage  === 'elder' ? this   : target.lifeStage === 'elder' ? target : null;
+    const student  = teacher === this ? target : teacher === target ? this : null;
+    if (teacher && student && Math.random() < 0.18) {
+      const lesson = teacher.memory.find(m => !student.memory.includes(m));
+      if (lesson) {
+        student.memory.unshift(`learned from ${teacher.name}: ${lesson}`);
+        if (student.memory.length > 5) student.memory.pop();
+        student.fulfillment = clamp(student.fulfillment + 6, 0, 100);
+        event = event ?? { type: 'teaching', teacher, student, lesson };
+      }
+    }
 
     this.state = 'wandering'; this.target = null;
     return event;
